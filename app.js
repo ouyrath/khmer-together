@@ -12,6 +12,8 @@ let selectedImage = null;
 let selectedProfileImage = null;
 let removeProfileImageRequested = false;
 let reportingPostId = null;
+let isAdmin = false;
+let adminReports = [];
 const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [] };
 
@@ -40,7 +42,12 @@ const els = {
   removeProfilePhoto: $('#removeProfilePhotoButton'),
   reportDialog: $('#reportDialog'), reportForm: $('#reportForm'),
   reportReason: $('#reportReason'), reportDetails: $('#reportDetails'),
-  reportMessage: $('#reportMessage'), submitReport: $('#submitReportButton')
+  reportMessage: $('#reportMessage'), submitReport: $('#submitReportButton'),
+  composerCard: $('#composerCard'), feedHeading: $('#feedHeading'),
+  adminReportsNav: $('#adminReportsNav'), adminReportsView: $('#adminReportsView'),
+  adminReportsList: $('#adminReportsList'), adminReportsLoading: $('#adminReportsLoading'),
+  adminReportsEmpty: $('#adminReportsEmpty'), adminStatusFilter: $('#adminStatusFilter'),
+  adminRefreshButton: $('#adminRefreshButton'), adminSummary: $('#adminSummary')
 };
 
 function initials(name = 'KT') {
@@ -140,20 +147,14 @@ function bindEvents() {
   els.profilePhotoInput.addEventListener('change', previewProfilePhoto);
   els.removeProfilePhoto.addEventListener('click', removeProfilePhotoPreview);
   els.reportForm.addEventListener('submit', submitPostReport);
+  els.adminStatusFilter.addEventListener('change', renderAdminReports);
+  els.adminRefreshButton.addEventListener('click', loadAdminReports);
   $$('.close-button').forEach(button => {
     button.addEventListener('click', () => button.closest('dialog')?.close());
   });
 
   $$('[data-feed]').forEach(button => {
-    button.addEventListener('click', () => {
-      feedMode = button.dataset.feed;
-      $$('[data-feed]').forEach(item => item.classList.toggle('active', item === button));
-      els.feedTitle.textContent = feedMode === 'all' ? 'Community feed' : 'Following';
-      els.feedSubtitle.textContent = feedMode === 'all'
-        ? 'Latest posts from Khmer Together members.'
-        : 'Posts from people you follow.';
-      renderFeed();
-    });
+    button.addEventListener('click', () => switchView(button.dataset.feed));
   });
 }
 
@@ -161,6 +162,9 @@ async function handleSession(session) {
   currentUser = session?.user || null;
   if (!currentUser) {
     currentProfile = null;
+    isAdmin = false;
+    adminReports = [];
+    els.adminReportsNav.classList.add('hidden');
     els.authView.classList.remove('hidden');
     els.appView.classList.add('hidden');
     els.topActions.classList.add('hidden');
@@ -170,8 +174,48 @@ async function handleSession(session) {
   els.appView.classList.remove('hidden');
   els.topActions.classList.remove('hidden');
   await ensureProfile();
+  await checkAdminAccess();
   updateMyProfileUI();
+  switchView('all', false);
   await loadFeed();
+}
+
+async function checkAdminAccess() {
+  const { data, error } = await supabase
+    .from('kt_admins')
+    .select('user_id')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  isAdmin = Boolean(data);
+  els.adminReportsNav.classList.toggle('hidden', !isAdmin);
+}
+
+function switchView(mode, load = true) {
+  if (mode === 'admin' && !isAdmin) return;
+
+  feedMode = mode;
+  $$('[data-feed]').forEach(item => item.classList.toggle('active', item.dataset.feed === mode));
+
+  const adminMode = mode === 'admin';
+  els.composerCard.classList.toggle('hidden', adminMode);
+  els.feedHeading.classList.toggle('hidden', adminMode);
+  els.feed.classList.toggle('hidden', adminMode);
+  els.adminReportsView.classList.toggle('hidden', !adminMode);
+
+  if (adminMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
+    if (load) loadAdminReports();
+    return;
+  }
+
+  els.feedTitle.textContent = mode === 'all' ? 'Community feed' : 'Following';
+  els.feedSubtitle.textContent = mode === 'all'
+    ? 'Latest posts from Khmer Together members.'
+    : 'Posts from people you follow.';
+  renderFeed();
 }
 
 async function ensureProfile() {
@@ -424,6 +468,7 @@ async function loadFeed() {
 }
 
 function renderFeed() {
+  if (feedMode === 'admin') return;
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
@@ -497,8 +542,13 @@ function renderComment(comment) {
 
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
-  avatar.style.width = '32px'; avatar.style.height = '32px'; avatar.style.fontSize = '11px';
+  avatar.style.width = '32px';
+  avatar.style.height = '32px';
+  avatar.style.fontSize = '11px';
   setAvatar(avatar, profile);
+
+  const content = document.createElement('div');
+  content.className = 'comment-content';
 
   const bubble = document.createElement('div');
   bubble.className = 'comment-bubble';
@@ -506,9 +556,41 @@ function renderComment(comment) {
   strong.textContent = profile.full_name;
   const body = document.createElement('span');
   body.textContent = comment.body;
-  bubble.append(strong,body);
-  wrap.append(avatar,bubble);
+  bubble.append(strong, body);
+  content.appendChild(bubble);
+
+  if (comment.user_id === currentUser.id) {
+    const actions = document.createElement('div');
+    actions.className = 'comment-actions';
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'comment-delete-button';
+    deleteButton.textContent = 'Delete';
+    deleteButton.addEventListener('click', () => deleteComment(comment));
+    actions.appendChild(deleteButton);
+    content.appendChild(actions);
+  }
+
+  wrap.append(avatar, content);
   return wrap;
+}
+
+async function deleteComment(comment) {
+  if (!confirm('Delete your comment?')) return;
+
+  try {
+    const { error } = await supabase
+      .from('kt_comments')
+      .delete()
+      .eq('id', comment.id)
+      .eq('user_id', currentUser.id);
+    if (error) throw error;
+
+    showToast('Comment deleted.');
+    await loadFeed();
+  } catch (error) {
+    showToast(error.message || 'Unable to delete the comment.');
+  }
 }
 
 async function toggleLike(postId,liked) {
@@ -630,6 +712,214 @@ async function submitPostReport(event) {
   } finally {
     els.submitReport.disabled = false;
     els.submitReport.textContent = 'Submit report';
+  }
+}
+
+
+const REPORT_REASON_LABELS = {
+  spam_scam: 'Spam or scam',
+  harassment: 'Harassment or bullying',
+  hate: 'Hate or dangerous content',
+  inappropriate: 'Inappropriate content',
+  other: 'Other'
+};
+
+async function loadAdminReports() {
+  if (!isAdmin) return;
+
+  els.adminReportsLoading.classList.remove('hidden');
+  els.adminReportsEmpty.classList.add('hidden');
+  els.adminReportsList.innerHTML = '';
+  els.adminRefreshButton.disabled = true;
+
+  try {
+    const { data: reports, error: reportsError } = await supabase
+      .from('kt_reports')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (reportsError) throw reportsError;
+
+    const postIds = [...new Set((reports || []).map(report => report.post_id).filter(Boolean))];
+    let posts = [];
+    if (postIds.length) {
+      const { data, error } = await supabase.from('kt_posts').select('*').in('id', postIds);
+      if (error) throw error;
+      posts = data || [];
+    }
+
+    const userIds = [...new Set([
+      ...(reports || []).map(report => report.reporter_id),
+      ...posts.map(post => post.user_id)
+    ].filter(Boolean))];
+    let profiles = [];
+    if (userIds.length) {
+      const { data, error } = await supabase.from('kt_profiles').select('*').in('id', userIds);
+      if (error) throw error;
+      profiles = data || [];
+    }
+
+    const postMap = new Map(posts.map(post => [post.id, post]));
+    const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
+
+    adminReports = (reports || []).map(report => {
+      const post = postMap.get(report.post_id) || null;
+      return {
+        ...report,
+        post,
+        reporter: profileMap.get(report.reporter_id) || null,
+        author: post ? profileMap.get(post.user_id) || null : null
+      };
+    });
+
+    renderAdminReports();
+  } catch (error) {
+    els.adminReportsList.innerHTML = '';
+    const message = document.createElement('section');
+    message.className = 'card admin-error';
+    message.textContent = `Unable to load reports: ${error.message || error}`;
+    els.adminReportsList.appendChild(message);
+  } finally {
+    els.adminReportsLoading.classList.add('hidden');
+    els.adminRefreshButton.disabled = false;
+  }
+}
+
+function renderAdminReports() {
+  if (!isAdmin) return;
+
+  const filter = els.adminStatusFilter.value;
+  const visible = filter === 'all'
+    ? adminReports
+    : adminReports.filter(report => report.status === filter);
+
+  const openCount = adminReports.filter(report => report.status === 'open').length;
+  const reviewingCount = adminReports.filter(report => report.status === 'reviewing').length;
+  els.adminSummary.textContent = `${openCount} open · ${reviewingCount} reviewing · ${adminReports.length} total`;
+  els.adminReportsList.innerHTML = '';
+  els.adminReportsEmpty.classList.toggle('hidden', visible.length > 0);
+
+  for (const report of visible) {
+    els.adminReportsList.appendChild(renderAdminReportCard(report));
+  }
+}
+
+function renderAdminReportCard(report) {
+  const card = document.createElement('article');
+  card.className = 'card admin-report-card';
+
+  const header = document.createElement('header');
+  header.className = 'admin-report-header';
+
+  const titleWrap = document.createElement('div');
+  const reason = document.createElement('strong');
+  reason.textContent = REPORT_REASON_LABELS[report.reason] || report.reason;
+  const meta = document.createElement('span');
+  meta.textContent = `${timeAgo(report.created_at)} · Reported by ${report.reporter?.full_name || 'Member'} (@${report.reporter?.username || 'member'})`;
+  titleWrap.append(reason, meta);
+
+  const status = document.createElement('span');
+  status.className = `report-status status-${report.status}`;
+  status.textContent = report.status;
+  header.append(titleWrap, status);
+  card.appendChild(header);
+
+  if (report.details) {
+    const details = document.createElement('p');
+    details.className = 'admin-report-details';
+    details.textContent = report.details;
+    card.appendChild(details);
+  }
+
+  const postBox = document.createElement('section');
+  postBox.className = 'reported-post-preview';
+  const postLabel = document.createElement('small');
+  postLabel.textContent = report.author
+    ? `Reported post by ${report.author.full_name} (@${report.author.username})`
+    : 'Reported post';
+  postBox.appendChild(postLabel);
+
+  if (report.post) {
+    if (report.post.body) {
+      const postBody = document.createElement('p');
+      postBody.textContent = report.post.body;
+      postBox.appendChild(postBody);
+    }
+    if (report.post.image_url) {
+      const image = document.createElement('img');
+      image.src = report.post.image_url;
+      image.alt = 'Reported post image';
+      image.loading = 'lazy';
+      postBox.appendChild(image);
+    }
+  } else {
+    const missing = document.createElement('p');
+    missing.className = 'muted';
+    missing.textContent = 'This post is no longer available.';
+    postBox.appendChild(missing);
+  }
+  card.appendChild(postBox);
+
+  const actions = document.createElement('div');
+  actions.className = 'admin-report-actions';
+
+  if (report.status !== 'reviewing') {
+    actions.appendChild(adminActionButton('Start review', () => updateReportStatus(report.id, 'reviewing')));
+  }
+  if (report.status !== 'resolved') {
+    actions.appendChild(adminActionButton('Resolve', () => updateReportStatus(report.id, 'resolved'), 'primary-lite'));
+  }
+  if (report.status !== 'dismissed') {
+    actions.appendChild(adminActionButton('Dismiss', () => updateReportStatus(report.id, 'dismissed')));
+  }
+  if (report.post) {
+    actions.appendChild(adminActionButton('Delete post', () => adminDeleteReportedPost(report), 'danger'));
+  }
+
+  card.appendChild(actions);
+  return card;
+}
+
+function adminActionButton(label, action, variant = '') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `admin-action-button ${variant}`.trim();
+  button.textContent = label;
+  button.addEventListener('click', action);
+  return button;
+}
+
+async function updateReportStatus(reportId, status) {
+  try {
+    const { error } = await supabase
+      .from('kt_reports')
+      .update({ status })
+      .eq('id', reportId);
+    if (error) throw error;
+
+    showToast(`Report marked ${status}.`);
+    await loadAdminReports();
+  } catch (error) {
+    showToast(error.message || 'Unable to update the report.');
+  }
+}
+
+async function adminDeleteReportedPost(report) {
+  if (!report.post || !confirm('Delete this reported post? This cannot be undone.')) return;
+
+  try {
+    const { error } = await supabase.from('kt_posts').delete().eq('id', report.post.id);
+    if (error) throw error;
+
+    if (report.post.image_url) {
+      const path = storagePathFromPublicUrl(report.post.image_url, 'kt-post-images');
+      if (path) await supabase.storage.from('kt-post-images').remove([path]);
+    }
+
+    showToast('Reported post deleted.');
+    await Promise.all([loadAdminReports(), loadFeed()]);
+  } catch (error) {
+    showToast(error.message || 'Unable to delete the reported post.');
   }
 }
 

@@ -88,6 +88,7 @@
         <nav class="side-nav" aria-label="Main navigation">
           <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
           <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
+          <button id="adminReportsNav" class="nav-item admin-nav hidden" data-feed="admin" type="button"><span>⚑</span> Admin reports</button>
         </nav>
 
         <div class="community-note">
@@ -97,7 +98,7 @@
       </aside>
 
       <section class="feed-column">
-        <section class="composer card">
+        <section id="composerCard" class="composer card">
           <div class="composer-row">
             <div id="composerAvatar" class="avatar">KT</div>
             <button id="openComposerButton" class="composer-prompt" type="button">
@@ -106,7 +107,7 @@
           </div>
         </section>
 
-        <div class="feed-heading">
+        <div id="feedHeading" class="feed-heading">
           <div>
             <h2 id="feedTitle">Community feed</h2>
             <p id="feedSubtitle">Latest posts from Khmer Together members.</p>
@@ -122,6 +123,36 @@
           <button id="emptyCreatePost" class="button primary" type="button">Create the first post</button>
         </div>
         <div id="feed" class="feed"></div>
+
+        <section id="adminReportsView" class="admin-reports-view hidden" aria-labelledby="adminReportsTitle">
+          <div class="admin-page-header">
+            <div>
+              <span class="mini-badge">PRIVATE ADMIN</span>
+              <h2 id="adminReportsTitle">Reported posts</h2>
+              <p id="adminSummary">Loading reports…</p>
+            </div>
+            <button id="adminRefreshButton" class="icon-button" type="button" title="Refresh reports" aria-label="Refresh reports">↻</button>
+          </div>
+
+          <label class="admin-filter">
+            Show reports
+            <select id="adminStatusFilter">
+              <option value="open">Open</option>
+              <option value="reviewing">Reviewing</option>
+              <option value="resolved">Resolved</option>
+              <option value="dismissed">Dismissed</option>
+              <option value="all">All reports</option>
+            </select>
+          </label>
+
+          <div id="adminReportsLoading" class="loading-card card hidden">Loading private reports…</div>
+          <div id="adminReportsEmpty" class="empty-card card hidden">
+            <div class="empty-icon">✓</div>
+            <h3>No reports in this section</h3>
+            <p>There is nothing that needs review here.</p>
+          </div>
+          <div id="adminReportsList" class="admin-reports-list"></div>
+        </section>
       </section>
 
       <aside class="rightbar">
