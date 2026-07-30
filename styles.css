@@ -74,3 +74,45 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
 .admin-action-button.danger{color:var(--bad);border-color:#efc4c0;margin-left:auto}
 .admin-error{padding:18px;color:var(--bad)}
 @media(max-width:760px){.admin-nav{grid-column:1/-1}.admin-page-header h2{font-size:22px}.admin-filter{max-width:none}.admin-report-card{padding:14px}.admin-action-button.danger{margin-left:0}}
+
+
+/* Compact comment edit/delete menu */
+.comment{position:relative}
+.comment-content{flex:0 1 auto;max-width:calc(100% - 76px)}
+.comment-owner-controls{position:relative;flex:0 0 30px;margin-left:2px}
+.comment-menu-button{
+  width:28px;height:28px;border:0;border-radius:50%;background:transparent;
+  color:var(--muted);font-size:20px;line-height:1;font-weight:900;padding:0;
+  display:grid;place-items:center
+}
+.comment-menu-button:hover,.comment-menu-button[aria-expanded="true"]{background:#e8edf4;color:var(--ink)}
+.comment-menu{
+  display:none;position:absolute;z-index:20;right:0;top:31px;min-width:155px;
+  background:#fff;border:1px solid var(--line);border-radius:11px;padding:5px;
+  box-shadow:0 12px 34px rgba(20,38,62,.2)
+}
+.comment-menu.open{display:grid}
+.comment-menu-item{
+  border:0;background:transparent;color:var(--ink);border-radius:8px;
+  padding:9px 10px;text-align:left;font-size:12px;font-weight:800;white-space:nowrap
+}
+.comment-menu-item:hover{background:var(--soft)}
+.comment-menu-item.danger{color:var(--bad)}
+.comment-edited-label{display:block;color:var(--muted);font-size:9px;font-weight:650;margin-top:3px}
+.comment-edit-form{min-width:min(360px,70vw)}
+.comment-edit-input{
+  min-height:64px;margin:0;padding:9px 11px;border-radius:12px;background:#fff;
+  font-size:13px;line-height:1.4;resize:vertical
+}
+.comment-edit-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:6px}
+.comment-edit-actions button{
+  border:1px solid var(--line);border-radius:8px;padding:6px 10px;
+  font-size:11px;font-weight:850
+}
+.comment-edit-cancel{background:#fff;color:var(--muted)}
+.comment-edit-save{background:var(--blue);border-color:var(--blue)!important;color:#fff}
+@media(max-width:470px){
+  .comment-content{max-width:calc(100% - 72px)}
+  .comment-menu{right:-2px}
+  .comment-edit-form{min-width:min(300px,68vw)}
+}

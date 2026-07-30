@@ -153,6 +153,10 @@ function bindEvents() {
     button.addEventListener('click', () => button.closest('dialog')?.close());
   });
 
+  document.addEventListener('click', () => {
+    $$('.comment-menu.open').forEach(menu => menu.classList.remove('open'));
+  });
+
   $$('[data-feed]').forEach(button => {
     button.addEventListener('click', () => switchView(button.dataset.feed));
   });
@@ -552,27 +556,161 @@ function renderComment(comment) {
 
   const bubble = document.createElement('div');
   bubble.className = 'comment-bubble';
+
   const strong = document.createElement('strong');
   strong.textContent = profile.full_name;
-  const body = document.createElement('span');
-  body.textContent = comment.body;
-  bubble.append(strong, body);
-  content.appendChild(bubble);
 
-  if (comment.user_id === currentUser.id) {
-    const actions = document.createElement('div');
-    actions.className = 'comment-actions';
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'comment-delete-button';
-    deleteButton.textContent = 'Delete';
-    deleteButton.addEventListener('click', () => deleteComment(comment));
-    actions.appendChild(deleteButton);
-    content.appendChild(actions);
+  const body = document.createElement('span');
+  body.className = 'comment-body';
+  body.textContent = comment.body;
+
+  bubble.append(strong, body);
+
+  const createdAt = new Date(comment.created_at || 0).getTime();
+  const updatedAt = new Date(comment.updated_at || comment.created_at || 0).getTime();
+  if (updatedAt - createdAt > 1000) {
+    const edited = document.createElement('small');
+    edited.className = 'comment-edited-label';
+    edited.textContent = 'Edited';
+    bubble.appendChild(edited);
   }
 
+  content.appendChild(bubble);
   wrap.append(avatar, content);
+
+  if (comment.user_id === currentUser.id) {
+    const ownerControls = document.createElement('div');
+    ownerControls.className = 'comment-owner-controls';
+
+    const menuButton = document.createElement('button');
+    menuButton.type = 'button';
+    menuButton.className = 'comment-menu-button';
+    menuButton.setAttribute('aria-label', 'Comment options');
+    menuButton.setAttribute('aria-expanded', 'false');
+    menuButton.textContent = '⋯';
+
+    const menu = document.createElement('div');
+    menu.className = 'comment-menu';
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'comment-menu-item';
+    editButton.textContent = 'Edit comment';
+    editButton.addEventListener('click', event => {
+      event.stopPropagation();
+      menu.classList.remove('open');
+      menuButton.setAttribute('aria-expanded', 'false');
+      beginEditComment(comment, content, bubble);
+    });
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'comment-menu-item danger';
+    deleteButton.textContent = 'Delete comment';
+    deleteButton.addEventListener('click', event => {
+      event.stopPropagation();
+      menu.classList.remove('open');
+      menuButton.setAttribute('aria-expanded', 'false');
+      deleteComment(comment);
+    });
+
+    menu.append(editButton, deleteButton);
+
+    menuButton.addEventListener('click', event => {
+      event.stopPropagation();
+      const opening = !menu.classList.contains('open');
+      $$('.comment-menu.open').forEach(otherMenu => otherMenu.classList.remove('open'));
+      menu.classList.toggle('open', opening);
+      menuButton.setAttribute('aria-expanded', String(opening));
+    });
+
+    menu.addEventListener('click', event => event.stopPropagation());
+
+    ownerControls.append(menuButton, menu);
+    wrap.appendChild(ownerControls);
+  }
+
   return wrap;
+}
+
+function beginEditComment(comment, content, bubble) {
+  if (content.querySelector('.comment-edit-form')) return;
+
+  bubble.classList.add('hidden');
+
+  const form = document.createElement('form');
+  form.className = 'comment-edit-form';
+
+  const input = document.createElement('textarea');
+  input.className = 'comment-edit-input';
+  input.maxLength = 500;
+  input.rows = 2;
+  input.required = true;
+  input.value = comment.body;
+
+  const actions = document.createElement('div');
+  actions.className = 'comment-edit-actions';
+
+  const cancelButton = document.createElement('button');
+  cancelButton.type = 'button';
+  cancelButton.className = 'comment-edit-cancel';
+  cancelButton.textContent = 'Cancel';
+
+  const saveButton = document.createElement('button');
+  saveButton.type = 'submit';
+  saveButton.className = 'comment-edit-save';
+  saveButton.textContent = 'Save';
+
+  actions.append(cancelButton, saveButton);
+  form.append(input, actions);
+  content.appendChild(form);
+
+  cancelButton.addEventListener('click', () => {
+    form.remove();
+    bubble.classList.remove('hidden');
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const newBody = input.value.trim();
+
+    if (!newBody) {
+      showToast('Comment cannot be empty.');
+      return;
+    }
+
+    if (newBody === comment.body) {
+      form.remove();
+      bubble.classList.remove('hidden');
+      return;
+    }
+
+    input.disabled = true;
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
+
+    try {
+      const { error } = await supabase
+        .from('kt_comments')
+        .update({ body: newBody })
+        .eq('id', comment.id)
+        .eq('user_id', currentUser.id);
+      if (error) throw error;
+
+      showToast('Comment updated.');
+      await loadFeed();
+    } catch (error) {
+      input.disabled = false;
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save';
+      showToast(error.message || 'Unable to update the comment.');
+    }
+  });
+
+  setTimeout(() => {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, 0);
 }
 
 async function deleteComment(comment) {
