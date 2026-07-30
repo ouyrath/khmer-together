@@ -181,3 +181,50 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .site-footer nav{justify-content:center;margin:14px 0}
   .site-footer small{display:block}
 }
+
+
+/* Compact Edit/Delete menu for a user's own posts */
+.post-actions-top{position:relative}
+.post-menu-trigger{
+  width:38px!important;height:38px!important;padding:0!important;border-radius:50%!important;
+  display:grid!important;place-items:center!important;font-size:22px!important;
+  line-height:1!important;color:var(--muted)!important;background:#fff!important
+}
+.post-menu-trigger:hover,
+.post-menu-trigger[aria-expanded="true"]{
+  background:var(--soft)!important;color:var(--ink)!important
+}
+.post-owner-menu{
+  display:none;position:absolute;z-index:25;right:0;top:44px;min-width:155px;
+  background:#fff;border:1px solid var(--line);border-radius:11px;padding:5px;
+  box-shadow:0 14px 38px rgba(20,38,62,.22)
+}
+.post-owner-menu.open{display:grid}
+.post-owner-menu-item{
+  border:0;background:transparent;color:var(--ink);border-radius:8px;
+  padding:10px 11px;text-align:left;font-size:12px;font-weight:850;white-space:nowrap
+}
+.post-owner-menu-item:hover{background:var(--soft)}
+.post-owner-menu-item.danger{color:var(--bad)}
+.post-edited-label{color:var(--muted);font-size:10px;font-weight:700}
+.post-edit-form{
+  margin:6px 18px 14px;padding:14px;border:1px solid var(--line);
+  border-radius:14px;background:var(--soft)
+}
+.post-edit-form label{margin:0;font-size:12px}
+.post-edit-textarea{
+  min-height:96px;margin-top:7px;background:#fff;line-height:1.5;resize:vertical
+}
+.post-edit-note{display:block;color:var(--muted);font-size:10px;margin-top:6px}
+.post-edit-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:11px}
+.post-edit-actions button{
+  border:1px solid var(--line);border-radius:9px;padding:8px 11px;
+  font-size:12px;font-weight:850
+}
+.post-edit-cancel{background:#fff;color:var(--muted)}
+.post-edit-save{background:var(--blue);border-color:var(--blue)!important;color:#fff}
+@media(max-width:470px){
+  .post-menu-trigger{width:34px!important;height:34px!important;font-size:20px!important}
+  .post-owner-menu{top:39px;right:0}
+  .post-edit-form{margin:5px 12px 12px;padding:12px}
+}

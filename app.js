@@ -155,6 +155,7 @@ function bindEvents() {
 
   document.addEventListener('click', () => {
     closeCommentMenus();
+    closePostMenus();
   });
 
   $$('[data-feed]').forEach(button => {
@@ -483,6 +484,15 @@ function renderFeed() {
   for (const post of posts) els.feed.appendChild(renderPost(post, followingIds));
 }
 
+function closePostMenus(exceptMenu = null) {
+  $$('.post-owner-menu.open').forEach(menu => {
+    if (menu === exceptMenu) return;
+    menu.classList.remove('open');
+    const trigger = menu.closest('.post-actions-top')?.querySelector('.post-menu-trigger');
+    trigger?.setAttribute('aria-expanded', 'false');
+  });
+}
+
 function renderPost(post, followingIds) {
   const node = $('#postTemplate').content.firstElementChild.cloneNode(true);
   const profile = feedState.profiles.get(post.user_id) || { full_name:'Khmer Together Member', username:'member' };
@@ -495,13 +505,28 @@ function renderPost(post, followingIds) {
   setAvatar($('.post-avatar',node), profile);
   $('.post-name',node).textContent = profile.full_name;
   $('.post-username',node).textContent = `@${profile.username}`;
-  $('.post-time',node).textContent = timeAgo(post.created_at);
-  $('.post-time',node).dateTime = post.created_at;
+
+  const timeElement = $('.post-time',node);
+  timeElement.textContent = timeAgo(post.created_at);
+  timeElement.dateTime = post.created_at;
+
+  const createdAt = new Date(post.created_at || 0).getTime();
+  const updatedAt = new Date(post.updated_at || post.created_at || 0).getTime();
+  if (updatedAt - createdAt > 1000) {
+    const edited = document.createElement('small');
+    edited.className = 'post-edited-label';
+    edited.textContent = ' · Edited';
+    timeElement.parentElement.appendChild(edited);
+  }
+
   $('.post-body',node).textContent = post.body || '';
   $('.post-body',node).classList.toggle('hidden', !post.body);
 
   const image = $('.post-image',node);
-  if (post.image_url) { image.src = post.image_url; image.classList.remove('hidden'); }
+  if (post.image_url) {
+    image.src = post.image_url;
+    image.classList.remove('hidden');
+  }
 
   $('.like-count',node).textContent = `${postLikes.length} ${postLikes.length === 1 ? 'like':'likes'}`;
   $('.comment-count',node).textContent = `${postComments.length} ${postComments.length === 1 ? 'comment':'comments'}`;
@@ -516,13 +541,71 @@ function renderPost(post, followingIds) {
   followButton.textContent = following ? 'Following':'Follow';
   followButton.addEventListener('click', () => toggleFollow(post.user_id,following));
 
-  const deleteButton = $('.delete-post',node);
-  deleteButton.classList.toggle('hidden',!isMine);
-  deleteButton.addEventListener('click', () => deletePost(post));
-
   const reportButton = $('.report-post',node);
   reportButton.classList.toggle('hidden',isMine);
   reportButton.addEventListener('click', () => openReportDialog(post.id));
+
+  const oldDeleteButton = $('.delete-post',node);
+  oldDeleteButton.classList.toggle('hidden', !isMine);
+
+  if (isMine) {
+    oldDeleteButton.textContent = '⋯';
+    oldDeleteButton.classList.remove('danger');
+    oldDeleteButton.classList.add('post-menu-trigger');
+    oldDeleteButton.setAttribute('aria-label', 'Post options');
+    oldDeleteButton.setAttribute('aria-haspopup', 'menu');
+    oldDeleteButton.setAttribute('aria-expanded', 'false');
+
+    const menu = document.createElement('div');
+    menu.className = 'post-owner-menu';
+    menu.setAttribute('role', 'menu');
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'post-owner-menu-item';
+    editButton.setAttribute('role', 'menuitem');
+    editButton.textContent = 'Edit post';
+    editButton.addEventListener('click', event => {
+      event.stopPropagation();
+      menu.classList.remove('open');
+      oldDeleteButton.setAttribute('aria-expanded', 'false');
+      beginEditPost(post, node);
+    });
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'post-owner-menu-item danger';
+    deleteButton.setAttribute('role', 'menuitem');
+    deleteButton.textContent = 'Delete post';
+    deleteButton.addEventListener('click', event => {
+      event.stopPropagation();
+      menu.classList.remove('open');
+      oldDeleteButton.setAttribute('aria-expanded', 'false');
+      deletePost(post);
+    });
+
+    menu.append(editButton, deleteButton);
+    $('.post-actions-top',node).appendChild(menu);
+
+    oldDeleteButton.addEventListener('click', event => {
+      event.stopPropagation();
+      const opening = !menu.classList.contains('open');
+      closePostMenus(menu);
+      closeCommentMenus();
+      menu.classList.toggle('open', opening);
+      oldDeleteButton.setAttribute('aria-expanded', String(opening));
+      if (opening) setTimeout(() => editButton.focus(), 0);
+    });
+
+    menu.addEventListener('click', event => event.stopPropagation());
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        menu.classList.remove('open');
+        oldDeleteButton.setAttribute('aria-expanded', 'false');
+        oldDeleteButton.focus();
+      }
+    });
+  }
 
   const commentsWrap = $('.comments',node);
   for (const comment of postComments.slice(-6)) commentsWrap.appendChild(renderComment(comment));
@@ -537,6 +620,101 @@ function renderPost(post, followingIds) {
   });
 
   return node;
+}
+
+function beginEditPost(post, postNode) {
+  if (postNode.querySelector('.post-edit-form')) return;
+
+  const bodyElement = $('.post-body', postNode);
+  const imageElement = $('.post-image', postNode);
+  bodyElement.classList.add('hidden');
+
+  const form = document.createElement('form');
+  form.className = 'post-edit-form';
+
+  const label = document.createElement('label');
+  label.textContent = post.image_url ? 'Edit post text or photo caption' : 'Edit post';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'post-edit-textarea';
+  textarea.maxLength = 2000;
+  textarea.rows = 4;
+  textarea.value = post.body || '';
+  textarea.placeholder = post.image_url
+    ? 'Add or edit a caption for this photo…'
+    : 'Write your post…';
+
+  const note = document.createElement('small');
+  note.className = 'post-edit-note';
+  note.textContent = 'The photo stays the same. You can edit the text or caption.';
+
+  label.appendChild(textarea);
+  form.append(label, note);
+
+  const actions = document.createElement('div');
+  actions.className = 'post-edit-actions';
+
+  const cancelButton = document.createElement('button');
+  cancelButton.type = 'button';
+  cancelButton.className = 'post-edit-cancel';
+  cancelButton.textContent = 'Cancel';
+
+  const saveButton = document.createElement('button');
+  saveButton.type = 'submit';
+  saveButton.className = 'post-edit-save';
+  saveButton.textContent = 'Save changes';
+
+  actions.append(cancelButton, saveButton);
+  form.appendChild(actions);
+
+  postNode.insertBefore(form, imageElement);
+
+  cancelButton.addEventListener('click', () => {
+    form.remove();
+    bodyElement.classList.toggle('hidden', !post.body);
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const newBody = textarea.value.trim();
+
+    if (!newBody && !post.image_url) {
+      showToast('A text-only post cannot be empty.');
+      return;
+    }
+
+    if (newBody === (post.body || '')) {
+      form.remove();
+      bodyElement.classList.toggle('hidden', !post.body);
+      return;
+    }
+
+    textarea.disabled = true;
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
+
+    try {
+      const { error } = await supabase
+        .from('kt_posts')
+        .update({ body: newBody })
+        .eq('id', post.id)
+        .eq('user_id', currentUser.id);
+      if (error) throw error;
+
+      showToast('Post updated.');
+      await loadFeed();
+    } catch (error) {
+      textarea.disabled = false;
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save changes';
+      showToast(error.message || 'Unable to update the post.');
+    }
+  });
+
+  setTimeout(() => {
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, 0);
 }
 
 function closeCommentMenus(exceptMenu = null) {
