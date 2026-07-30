@@ -41,6 +41,21 @@ let messageChannel = null;
 let messagePollTimer = null;
 let reportingConversationId = null;
 let reportingConversationMember = null;
+let selectedChatImageFile = null;
+let selectedChatImagePreviewUrl = null;
+let recordedChatAudioBlob = null;
+let recordedChatAudioPreviewUrl = null;
+let recordedChatAudioDuration = 0;
+let chatMediaRecorder = null;
+let chatMediaStream = null;
+let chatAudioChunks = [];
+let chatRecordingStartedAt = 0;
+let chatRecordingTimer = null;
+let cancelCurrentChatRecording = false;
+const messageAttachmentUrlCache = new Map();
+const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const CHAT_AUDIO_MAX_BYTES = 15 * 1024 * 1024;
+const CHAT_AUDIO_MAX_SECONDS = 5 * 60;
 const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [], blocks: [] };
 
@@ -127,6 +142,15 @@ const els = {
   chatEmpty: $('#chatEmpty'), chatMessages: $('#chatMessages'),
   chatComposer: $('#chatComposer'), chatMessageInput: $('#chatMessageInput'),
   sendMessageButton: $('#sendMessageButton'), chatMessageStatus: $('#chatMessageStatus'),
+  chatPhotoInput: $('#chatPhotoInput'), chatPhotoButton: $('#chatPhotoButton'),
+  chatVoiceButton: $('#chatVoiceButton'), chatAttachmentPreview: $('#chatAttachmentPreview'),
+  chatImageDraft: $('#chatImageDraft'), chatImageDraftPreview: $('#chatImageDraftPreview'),
+  chatImageDraftInfo: $('#chatImageDraftInfo'), chatAudioDraft: $('#chatAudioDraft'),
+  chatAudioDraftPlayer: $('#chatAudioDraftPlayer'), chatAudioDraftInfo: $('#chatAudioDraftInfo'),
+  removeChatAttachment: $('#removeChatAttachmentButton'),
+  chatRecordingPanel: $('#chatRecordingPanel'), chatRecordingTime: $('#chatRecordingTime'),
+  stopVoiceRecording: $('#stopVoiceRecordingButton'),
+  cancelVoiceRecording: $('#cancelVoiceRecordingButton'),
   conversationReportDialog: $('#conversationReportDialog'),
   conversationReportForm: $('#conversationReportForm'),
   conversationReportReason: $('#conversationReportReason'),
@@ -347,13 +371,19 @@ function bindEvents() {
   });
   els.messagesRefreshButton.addEventListener('click', loadConversations);
   els.findMembersForMessages.addEventListener('click', () => switchView('members'));
-  els.chatBackButton.addEventListener('click', () => switchView('messages'));
+  els.chatBackButton.addEventListener('click', () => { clearChatAttachmentDraft(); switchView('messages'); });
   els.chatMemberButton.addEventListener('click', () => {
     if (activeChatProfile?.id) openMemberProfile(activeChatProfile.id, { returnMode: 'messages' });
   });
   els.chatReportButton.addEventListener('click', openConversationReportDialog);
   els.chatBlockButton.addEventListener('click', blockActiveChatMember);
   els.chatComposer.addEventListener('submit', sendChatMessage);
+  els.chatPhotoButton.addEventListener('click', () => els.chatPhotoInput.click());
+  els.chatPhotoInput.addEventListener('change', selectChatPhoto);
+  els.chatVoiceButton.addEventListener('click', startChatVoiceRecording);
+  els.stopVoiceRecording.addEventListener('click', () => stopChatVoiceRecording(true));
+  els.cancelVoiceRecording.addEventListener('click', () => stopChatVoiceRecording(false));
+  els.removeChatAttachment.addEventListener('click', clearChatAttachmentDraft);
   els.conversationReportForm.addEventListener('submit', submitConversationReport);
   els.changeEmailForm.addEventListener('submit', changeAccountEmail);
   els.changePasswordForm.addEventListener('submit', changeAccountPassword);
@@ -1572,6 +1602,360 @@ async function deletePost(post) {
 
 
 
+
+function formatFileSize(bytes = 0) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatVoiceDuration(seconds = 0) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function normalizeAttachmentMime(mime = '') {
+  return String(mime).split(';')[0].trim().toLowerCase();
+}
+
+function extensionForAttachment(type, mime) {
+  const normalized = normalizeAttachmentMime(mime);
+  const extensions = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'audio/webm': 'webm',
+    'audio/mp4': 'm4a',
+    'audio/x-m4a': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/aac': 'aac'
+  };
+  return extensions[normalized] || (type === 'image' ? 'jpg' : 'webm');
+}
+
+function messagePreviewText(message) {
+  const body = String(message?.body || '').trim();
+  if (message?.attachment_type === 'image') return body ? `📷 ${body}` : '📷 Photo';
+  if (message?.attachment_type === 'audio') return body ? `🎙 ${body}` : '🎙 Voice message';
+  return body || 'Message';
+}
+
+function revokeChatDraftUrls() {
+  if (selectedChatImagePreviewUrl) {
+    URL.revokeObjectURL(selectedChatImagePreviewUrl);
+    selectedChatImagePreviewUrl = null;
+  }
+  if (recordedChatAudioPreviewUrl) {
+    URL.revokeObjectURL(recordedChatAudioPreviewUrl);
+    recordedChatAudioPreviewUrl = null;
+  }
+}
+
+function clearChatAttachmentDraft() {
+  if (chatMediaRecorder?.state === 'recording') {
+    stopChatVoiceRecording(false);
+  }
+
+  revokeChatDraftUrls();
+  selectedChatImageFile = null;
+  recordedChatAudioBlob = null;
+  recordedChatAudioDuration = 0;
+  els.chatPhotoInput.value = '';
+  updateChatAttachmentDraft();
+}
+
+function clearSelectedChatPhoto() {
+  if (selectedChatImagePreviewUrl) URL.revokeObjectURL(selectedChatImagePreviewUrl);
+  selectedChatImagePreviewUrl = null;
+  selectedChatImageFile = null;
+  els.chatPhotoInput.value = '';
+}
+
+function clearRecordedChatAudio() {
+  if (recordedChatAudioPreviewUrl) URL.revokeObjectURL(recordedChatAudioPreviewUrl);
+  recordedChatAudioPreviewUrl = null;
+  recordedChatAudioBlob = null;
+  recordedChatAudioDuration = 0;
+  els.chatAudioDraftPlayer.removeAttribute('src');
+  els.chatAudioDraftPlayer.load();
+}
+
+function updateChatAttachmentDraft() {
+  const hasImage = Boolean(selectedChatImageFile && selectedChatImagePreviewUrl);
+  const hasAudio = Boolean(recordedChatAudioBlob && recordedChatAudioPreviewUrl);
+  const hasAttachment = hasImage || hasAudio;
+
+  els.chatAttachmentPreview.classList.toggle('hidden', !hasAttachment);
+  els.chatImageDraft.classList.toggle('hidden', !hasImage);
+  els.chatAudioDraft.classList.toggle('hidden', !hasAudio);
+
+  if (hasImage) {
+    els.chatImageDraftPreview.src = selectedChatImagePreviewUrl;
+    els.chatImageDraftInfo.textContent = `${formatFileSize(selectedChatImageFile.size)} · Private photo`;
+  } else {
+    els.chatImageDraftPreview.removeAttribute('src');
+  }
+
+  if (hasAudio) {
+    els.chatAudioDraftPlayer.src = recordedChatAudioPreviewUrl;
+    els.chatAudioDraftInfo.textContent = `${formatVoiceDuration(recordedChatAudioDuration)} · ${formatFileSize(recordedChatAudioBlob.size)}`;
+  }
+}
+
+function selectChatPhoto() {
+  const file = els.chatPhotoInput.files?.[0];
+  if (!file) return;
+
+  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const mime = normalizeAttachmentMime(file.type);
+
+  if (!allowed.includes(mime)) {
+    els.chatPhotoInput.value = '';
+    showToast('Choose a JPG, PNG, GIF, or WebP photo.');
+    return;
+  }
+  if (file.size > CHAT_IMAGE_MAX_BYTES) {
+    els.chatPhotoInput.value = '';
+    showToast('The private-message photo must be 10 MB or smaller.');
+    return;
+  }
+
+  if (chatMediaRecorder?.state === 'recording') stopChatVoiceRecording(false);
+  clearRecordedChatAudio();
+  clearSelectedChatPhoto();
+  selectedChatImageFile = file;
+  selectedChatImagePreviewUrl = URL.createObjectURL(file);
+  updateChatAttachmentDraft();
+}
+
+function supportedVoiceMimeType() {
+  if (!window.MediaRecorder) return '';
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/mp4',
+    'audio/webm',
+    'audio/ogg;codecs=opus'
+  ];
+  return candidates.find(type => MediaRecorder.isTypeSupported?.(type)) || '';
+}
+
+function resetRecordingUI() {
+  if (chatRecordingTimer) {
+    clearInterval(chatRecordingTimer);
+    chatRecordingTimer = null;
+  }
+  chatMediaStream?.getTracks().forEach(track => track.stop());
+  chatMediaStream = null;
+  chatMediaRecorder = null;
+  chatAudioChunks = [];
+  chatRecordingStartedAt = 0;
+  els.chatRecordingPanel.classList.add('hidden');
+  els.chatRecordingTime.textContent = '0:00';
+  els.chatPhotoButton.disabled = false;
+  els.chatVoiceButton.disabled = false;
+  els.sendMessageButton.disabled = false;
+}
+
+async function startChatVoiceRecording() {
+  if (!activeConversation || !activeChatMessagingAllowed) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    setMessage(els.chatMessageStatus, 'Voice recording is not supported by this browser.');
+    return;
+  }
+  if (chatMediaRecorder?.state === 'recording') return;
+
+  clearSelectedChatPhoto();
+  clearRecordedChatAudio();
+  updateChatAttachmentDraft();
+  setMessage(els.chatMessageStatus);
+
+  try {
+    chatMediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+
+    const preferredMime = supportedVoiceMimeType();
+    const options = { audioBitsPerSecond: 64000 };
+    if (preferredMime) options.mimeType = preferredMime;
+
+    chatAudioChunks = [];
+    cancelCurrentChatRecording = false;
+    chatMediaRecorder = new MediaRecorder(chatMediaStream, options);
+    chatRecordingStartedAt = Date.now();
+
+    chatMediaRecorder.addEventListener('dataavailable', event => {
+      if (event.data?.size) chatAudioChunks.push(event.data);
+    });
+
+    chatMediaRecorder.addEventListener('stop', () => {
+      const recorderMime = normalizeAttachmentMime(
+        chatMediaRecorder?.mimeType || preferredMime || 'audio/webm'
+      );
+      const duration = Math.max(
+        1,
+        Math.min(CHAT_AUDIO_MAX_SECONDS, Math.round((Date.now() - chatRecordingStartedAt) / 1000))
+      );
+      const audioBlob = new Blob(chatAudioChunks, { type: recorderMime });
+      const cancelled = cancelCurrentChatRecording;
+
+      resetRecordingUI();
+
+      if (cancelled) {
+        updateChatAttachmentDraft();
+        return;
+      }
+      if (!audioBlob.size) {
+        setMessage(els.chatMessageStatus, 'No voice audio was recorded. Please try again.');
+        return;
+      }
+      if (audioBlob.size > CHAT_AUDIO_MAX_BYTES) {
+        setMessage(els.chatMessageStatus, 'The voice recording is too large. Record a shorter message.');
+        return;
+      }
+
+      recordedChatAudioBlob = audioBlob;
+      recordedChatAudioDuration = duration;
+      recordedChatAudioPreviewUrl = URL.createObjectURL(audioBlob);
+      updateChatAttachmentDraft();
+      setMessage(els.chatMessageStatus, 'Voice message ready to send.', true);
+    });
+
+    chatMediaRecorder.addEventListener('error', event => {
+      resetRecordingUI();
+      setMessage(els.chatMessageStatus, event.error?.message || 'Voice recording failed.');
+    });
+
+    chatMediaRecorder.start(250);
+    els.chatRecordingPanel.classList.remove('hidden');
+    els.chatPhotoButton.disabled = true;
+    els.chatVoiceButton.disabled = true;
+    els.sendMessageButton.disabled = true;
+
+    const updateTimer = () => {
+      const elapsed = Math.min(
+        CHAT_AUDIO_MAX_SECONDS,
+        Math.floor((Date.now() - chatRecordingStartedAt) / 1000)
+      );
+      els.chatRecordingTime.textContent = formatVoiceDuration(elapsed);
+      if (elapsed >= CHAT_AUDIO_MAX_SECONDS) stopChatVoiceRecording(true);
+    };
+    updateTimer();
+    chatRecordingTimer = window.setInterval(updateTimer, 250);
+  } catch (error) {
+    resetRecordingUI();
+    const denied = error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError';
+    setMessage(
+      els.chatMessageStatus,
+      denied
+        ? 'Microphone permission was denied. Allow microphone access in your browser settings.'
+        : (error.message || 'Unable to start voice recording.')
+    );
+  }
+}
+
+function stopChatVoiceRecording(saveRecording = true) {
+  if (!chatMediaRecorder || chatMediaRecorder.state !== 'recording') return;
+  cancelCurrentChatRecording = !saveRecording;
+  chatMediaRecorder.stop();
+}
+
+function setChatComposerBusy(busy, label = 'Send') {
+  els.chatMessageInput.disabled = busy;
+  els.chatPhotoButton.disabled = busy;
+  els.chatVoiceButton.disabled = busy;
+  els.removeChatAttachment.disabled = busy;
+  els.sendMessageButton.disabled = busy;
+  els.sendMessageButton.textContent = busy ? label : 'Send';
+}
+
+async function privateMessageAttachmentUrl(path) {
+  if (!path) return null;
+  const cached = messageAttachmentUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const { data, error } = await supabase.storage
+    .from('kt-message-attachments')
+    .createSignedUrl(path, 3600);
+  if (error) throw error;
+
+  const url = data?.signedUrl || null;
+  if (url) {
+    messageAttachmentUrlCache.set(path, {
+      url,
+      expiresAt: Date.now() + 50 * 60 * 1000
+    });
+  }
+  return url;
+}
+
+async function renderPrivateMessageAttachment(container, message) {
+  if (!message.attachment_path || !message.attachment_type) return;
+
+  const loading = document.createElement('div');
+  loading.className = 'chat-attachment-loading';
+  loading.textContent = message.attachment_type === 'image'
+    ? 'Loading private photo…'
+    : 'Loading voice message…';
+  container.appendChild(loading);
+
+  try {
+    const signedUrl = await privateMessageAttachmentUrl(message.attachment_path);
+    if (!container.isConnected || !signedUrl) return;
+    loading.remove();
+
+    if (message.attachment_type === 'image') {
+      const link = document.createElement('a');
+      link.className = 'chat-image-attachment';
+      link.href = signedUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.setAttribute('aria-label', 'Open private photo');
+
+      const image = document.createElement('img');
+      image.src = signedUrl;
+      image.alt = 'Private message photo';
+      image.loading = 'lazy';
+      image.referrerPolicy = 'no-referrer';
+      link.appendChild(image);
+      container.appendChild(link);
+      return;
+    }
+
+    if (message.attachment_type === 'audio') {
+      const voice = document.createElement('div');
+      voice.className = 'chat-voice-attachment';
+
+      const label = document.createElement('span');
+      label.className = 'chat-voice-label';
+      label.innerHTML = '<span aria-hidden="true">🎙</span><strong>Voice message</strong>';
+
+      const audio = document.createElement('audio');
+      audio.controls = true;
+      audio.preload = 'metadata';
+      audio.src = signedUrl;
+
+      const duration = document.createElement('small');
+      duration.textContent = formatVoiceDuration(message.audio_duration_seconds || 0);
+
+      voice.append(label, audio, duration);
+      container.appendChild(voice);
+    }
+  } catch (error) {
+    if (!container.isConnected) return;
+    loading.className = 'chat-attachment-error';
+    loading.textContent = 'This private attachment is unavailable.';
+  }
+}
+
 function updateMessageBadges() {
   const count = Math.max(0, Number(unreadMessageCount) || 0);
   const label = count > 99 ? '99+' : String(count);
@@ -1716,7 +2100,7 @@ function renderConversations() {
       preview.textContent = 'Start the conversation.';
     } else {
       const prefix = latest.sender_id === currentUser.id ? 'You: ' : '';
-      preview.textContent = `${prefix}${latest.body}`;
+      preview.textContent = `${prefix}${messagePreviewText(latest)}`;
     }
 
     const username = document.createElement('small');
@@ -1758,6 +2142,8 @@ async function startConversation(profile) {
 async function openConversation(conversation, profile = null) {
   if (!conversation?.id) return;
 
+  const changingConversation = activeConversation?.id !== conversation.id;
+  if (changingConversation) clearChatAttachmentDraft();
   activeConversation = conversation;
   const otherId = otherConversationUser(conversation);
   activeChatProfile = profile || conversationProfiles.get(otherId) || {
@@ -1810,6 +2196,7 @@ function updateChatAvailability() {
   els.chatComposer.classList.toggle('hidden', !activeChatMessagingAllowed);
   els.chatBlockButton.textContent = activeChatMessagingAllowed ? 'Block' : 'Blocked';
   els.chatBlockButton.disabled = !activeChatMessagingAllowed;
+  if (!activeChatMessagingAllowed) clearChatAttachmentDraft();
 }
 
 function renderChatMessages() {
@@ -1820,12 +2207,23 @@ function renderChatMessages() {
     const mine = message.sender_id === currentUser.id;
     const row = document.createElement('div');
     row.className = `chat-message-row ${mine ? 'mine' : 'theirs'}`;
+    row.dataset.messageId = message.id;
 
     const bubble = document.createElement('div');
-    bubble.className = 'chat-message-bubble';
+    bubble.className = `chat-message-bubble ${message.attachment_type ? 'has-attachment' : ''}`.trim();
 
-    const body = document.createElement('p');
-    body.textContent = message.body;
+    if (message.attachment_path && message.attachment_type) {
+      const attachment = document.createElement('div');
+      attachment.className = 'chat-message-attachment';
+      bubble.appendChild(attachment);
+      renderPrivateMessageAttachment(attachment, message);
+    }
+
+    if (message.body) {
+      const body = document.createElement('p');
+      body.textContent = message.body;
+      bubble.appendChild(body);
+    }
 
     const meta = document.createElement('div');
     meta.className = 'chat-message-meta';
@@ -1847,7 +2245,7 @@ function renderChatMessages() {
       meta.append(document.createTextNode(' · '), deleteButton);
     }
 
-    bubble.append(body, meta);
+    bubble.appendChild(meta);
     row.appendChild(bubble);
     els.chatMessages.appendChild(row);
   }
@@ -1861,29 +2259,78 @@ async function sendChatMessage(event) {
   event.preventDefault();
   if (!activeConversation || !activeChatProfile || !activeChatMessagingAllowed) return;
 
-  const body = els.chatMessageInput.value.trim();
-  if (!body) return;
+  if (chatMediaRecorder?.state === 'recording') {
+    setMessage(els.chatMessageStatus, 'Stop the voice recording before sending.');
+    return;
+  }
 
-  els.sendMessageButton.disabled = true;
-  els.sendMessageButton.textContent = 'Sending…';
+  const body = els.chatMessageInput.value.trim();
+  const attachment = selectedChatImageFile
+    ? {
+        type: 'image',
+        blob: selectedChatImageFile,
+        mime: normalizeAttachmentMime(selectedChatImageFile.type),
+        size: selectedChatImageFile.size,
+        duration: null
+      }
+    : recordedChatAudioBlob
+      ? {
+          type: 'audio',
+          blob: recordedChatAudioBlob,
+          mime: normalizeAttachmentMime(recordedChatAudioBlob.type || 'audio/webm'),
+          size: recordedChatAudioBlob.size,
+          duration: Math.max(1, Math.min(CHAT_AUDIO_MAX_SECONDS, Math.round(recordedChatAudioDuration)))
+        }
+      : null;
+
+  if (!body && !attachment) {
+    setMessage(els.chatMessageStatus, 'Write a message, add a photo, or record a voice message.');
+    return;
+  }
+
+  let uploadedPath = null;
+  setChatComposerBusy(true, attachment ? 'Uploading…' : 'Sending…');
   setMessage(els.chatMessageStatus);
 
   try {
+    if (attachment) {
+      const extension = extensionForAttachment(attachment.type, attachment.mime);
+      uploadedPath = `${currentUser.id}/${activeConversation.id}/${crypto.randomUUID()}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('kt-message-attachments')
+        .upload(uploadedPath, attachment.blob, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: attachment.mime
+        });
+      if (uploadError) throw uploadError;
+      els.sendMessageButton.textContent = 'Sending…';
+    }
+
     const { error } = await supabase.from('kt_messages').insert({
       conversation_id: activeConversation.id,
       sender_id: currentUser.id,
       recipient_id: activeChatProfile.id,
-      body
+      body: body || null,
+      attachment_type: attachment?.type || null,
+      attachment_path: uploadedPath,
+      attachment_mime: attachment?.mime || null,
+      attachment_size_bytes: attachment?.size || null,
+      audio_duration_seconds: attachment?.duration || null
     });
     if (error) throw error;
 
     els.chatMessageInput.value = '';
+    clearChatAttachmentDraft();
     await openConversation(activeConversation, activeChatProfile);
   } catch (error) {
+    if (uploadedPath) {
+      await supabase.storage.from('kt-message-attachments').remove([uploadedPath]);
+    }
     setMessage(els.chatMessageStatus, error.message || 'Unable to send this message.');
   } finally {
-    els.sendMessageButton.disabled = false;
-    els.sendMessageButton.textContent = 'Send';
+    setChatComposerBusy(false);
   }
 }
 
@@ -1916,6 +2363,14 @@ async function deleteChatMessage(message) {
       .eq('id', message.id)
       .eq('sender_id', currentUser.id);
     if (error) throw error;
+
+    if (message.attachment_path) {
+      messageAttachmentUrlCache.delete(message.attachment_path);
+      const { error: storageError } = await supabase.storage
+        .from('kt-message-attachments')
+        .remove([message.attachment_path]);
+      if (storageError) console.warn('Unable to remove deleted message attachment:', storageError);
+    }
 
     activeChatMessages = activeChatMessages.filter(item => item.id !== message.id);
     renderChatMessages();
@@ -2024,6 +2479,17 @@ function startMessageUpdates() {
         renderChatMessages();
       }
     })
+    .on('postgres_changes', {
+      event: 'DELETE', schema: 'public', table: 'kt_messages'
+    }, async payload => {
+      const oldMessage = payload.old || {};
+      if (oldMessage.attachment_path) messageAttachmentUrlCache.delete(oldMessage.attachment_path);
+      if (activeConversation?.id === oldMessage.conversation_id && feedMode === 'chat') {
+        activeChatMessages = activeChatMessages.filter(item => item.id !== oldMessage.id);
+        renderChatMessages();
+      }
+      if (feedMode === 'messages') await loadConversations();
+    })
     .subscribe();
 
   messagePollTimer = window.setInterval(async () => {
@@ -2036,6 +2502,9 @@ function startMessageUpdates() {
 }
 
 async function stopMessageUpdates() {
+  if (chatMediaRecorder?.state === 'recording') stopChatVoiceRecording(false);
+  clearChatAttachmentDraft();
+  messageAttachmentUrlCache.clear();
   if (messagePollTimer) {
     clearInterval(messagePollTimer);
     messagePollTimer = null;
@@ -2605,6 +3074,35 @@ async function deleteStorageFolder(bucket, userId) {
   throw new Error(`Too many files remain in ${bucket}. Please contact support before deleting the account.`);
 }
 
+async function deleteOwnPrivateMessageAttachments() {
+  const paths = [];
+  let from = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('kt_messages')
+      .select('attachment_path')
+      .eq('sender_id', currentUser.id)
+      .not('attachment_path', 'is', null)
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    const rows = data || [];
+    paths.push(...rows.map(row => row.attachment_path).filter(Boolean));
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  for (let index = 0; index < paths.length; index += 100) {
+    const batch = paths.slice(index, index + 100);
+    const { error } = await supabase.storage
+      .from('kt-message-attachments')
+      .remove(batch);
+    if (error) throw error;
+  }
+}
+
 async function permanentlyDeleteAccount(event) {
   event.preventDefault();
 
@@ -2633,6 +3131,9 @@ async function permanentlyDeleteAccount(event) {
     await Promise.all([stopNotificationUpdates(), stopMessageUpdates()]);
     await deleteStorageFolder('kt-post-images', currentUser.id);
     await deleteStorageFolder('kt-profile-images', currentUser.id);
+    els.confirmDeleteAccount.textContent = 'Deleting private attachments…';
+    setMessage(els.deleteAccountMessage, 'Removing your sent message photos and voice recordings.');
+    await deleteOwnPrivateMessageAttachments();
 
     els.confirmDeleteAccount.textContent = 'Deleting account…';
     setMessage(els.deleteAccountMessage, 'Removing your account and community data.');

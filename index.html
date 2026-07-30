@@ -243,7 +243,7 @@
               <div>
                 <span class="danger-kicker">DANGER ZONE</span>
                 <h3>Delete account permanently</h3>
-                <p>This removes your active profile, posts, comments, likes, follows, messages, notifications, reports, and uploaded photos. This cannot be undone.</p>
+                <p>This removes your active profile, posts, comments, likes, follows, messages, notifications, reports, uploaded photos, and sent voice recordings. This cannot be undone.</p>
               </div>
             </div>
             <button id="openDeleteAccountButton" class="button danger-button" type="button">Delete my account</button>
@@ -299,9 +299,48 @@
           <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
 
           <form id="chatComposer" class="chat-composer card">
-            <label class="sr-only" for="chatMessageInput">Message</label>
-            <textarea id="chatMessageInput" maxlength="2000" rows="1" placeholder="Write a private message…" required></textarea>
-            <button id="sendMessageButton" class="button primary" type="submit">Send</button>
+            <div id="chatAttachmentPreview" class="chat-attachment-preview hidden">
+              <div id="chatImageDraft" class="chat-image-draft hidden">
+                <img id="chatImageDraftPreview" alt="Selected private-message photo">
+                <div>
+                  <strong>Photo ready</strong>
+                  <span id="chatImageDraftInfo">Private image</span>
+                </div>
+              </div>
+              <div id="chatAudioDraft" class="chat-audio-draft hidden">
+                <span class="voice-draft-icon" aria-hidden="true">🎙</span>
+                <div>
+                  <strong>Voice message ready</strong>
+                  <span id="chatAudioDraftInfo">0:00</span>
+                  <audio id="chatAudioDraftPlayer" controls preload="metadata"></audio>
+                </div>
+              </div>
+              <button id="removeChatAttachmentButton" class="remove-chat-attachment" type="button">Remove</button>
+            </div>
+
+            <div id="chatRecordingPanel" class="chat-recording-panel hidden" role="status">
+              <span class="recording-dot" aria-hidden="true"></span>
+              <strong>Recording</strong>
+              <time id="chatRecordingTime">0:00</time>
+              <button id="stopVoiceRecordingButton" type="button">Stop</button>
+              <button id="cancelVoiceRecordingButton" type="button">Cancel</button>
+            </div>
+
+            <div class="chat-composer-main">
+              <div class="chat-media-actions" aria-label="Message attachments">
+                <input id="chatPhotoInput" class="hidden" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+                <button id="chatPhotoButton" class="chat-media-button" type="button" title="Add photo" aria-label="Add photo">
+                  <span aria-hidden="true">📷</span><small>Photo</small>
+                </button>
+                <button id="chatVoiceButton" class="chat-media-button" type="button" title="Record voice message" aria-label="Record voice message">
+                  <span aria-hidden="true">🎙</span><small>Voice</small>
+                </button>
+              </div>
+              <label class="sr-only" for="chatMessageInput">Message</label>
+              <textarea id="chatMessageInput" maxlength="2000" rows="1" placeholder="Write a private message…"></textarea>
+              <button id="sendMessageButton" class="button primary" type="submit">Send</button>
+            </div>
+            <small class="chat-media-note">Photos: up to 10 MB. Voice: up to 5 minutes. Attachments stay private to this conversation.</small>
           </form>
           <p id="chatMessageStatus" class="form-message" role="status"></p>
         </section>
@@ -503,7 +542,7 @@
         <strong>Before continuing</strong>
         <ul>
           <li>Your profile and community activity will be removed.</li>
-          <li>Your private conversations and uploaded photos will be removed.</li>
+          <li>Your private conversations, sent message photos, and sent voice recordings will be removed.</li>
           <li>You will immediately lose access to this account.</li>
         </ul>
       </div>

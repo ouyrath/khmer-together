@@ -665,3 +665,73 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .settings-inline-actions{display:grid;grid-template-columns:1fr}
   .settings-inline-actions .button{width:100%}
 }
+
+
+/* Private photo and voice messages */
+.chat-composer{display:block;padding:10px}
+.chat-composer-main{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:end
+}
+.chat-media-actions{display:flex;gap:5px;align-items:center}
+.chat-media-button{
+  width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:#fff;
+  color:var(--ink);display:grid;place-items:center;align-content:center;gap:0;padding:2px
+}
+.chat-media-button span{font-size:18px;line-height:1}
+.chat-media-button small{font-size:7px;color:var(--muted);font-weight:850;margin-top:2px}
+.chat-media-button:hover{background:var(--soft)}
+.chat-media-button:disabled{opacity:.5;cursor:not-allowed}
+.chat-composer-main textarea{min-height:44px;max-height:130px;resize:vertical;margin:0}
+.chat-composer-main>.button{height:44px}
+.chat-media-note{display:block;color:var(--muted);font-size:8px;line-height:1.35;margin:7px 3px 0}
+.chat-attachment-preview{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  border:1px solid #bdd7eb;background:#f4faff;border-radius:13px;padding:9px 10px;margin-bottom:9px
+}
+.chat-image-draft,.chat-audio-draft{display:flex;align-items:center;gap:10px;min-width:0}
+.chat-image-draft img{width:68px;height:58px;object-fit:cover;border-radius:9px;border:1px solid var(--line)}
+.chat-image-draft strong,.chat-image-draft span,.chat-audio-draft strong,.chat-audio-draft span{display:block}
+.chat-image-draft strong,.chat-audio-draft strong{font-size:11px}
+.chat-image-draft span,.chat-audio-draft span{font-size:8px;color:var(--muted);margin-top:2px}
+.chat-audio-draft>div{min-width:0}
+.chat-audio-draft audio{display:block;width:min(330px,48vw);height:34px;margin-top:5px}
+.voice-draft-icon{font-size:25px}
+.remove-chat-attachment{border:0;background:transparent;color:var(--bad);font-size:9px;font-weight:850;padding:7px}
+.chat-recording-panel{
+  display:flex;align-items:center;gap:9px;background:#fff4f3;border:1px solid #efb7b2;
+  color:#8d312b;border-radius:12px;padding:9px 11px;margin-bottom:9px;font-size:10px
+}
+.recording-dot{width:10px;height:10px;border-radius:50%;background:#d64238;animation:voiceRecordingPulse 1s infinite}
+.chat-recording-panel time{margin-right:auto;font-variant-numeric:tabular-nums;font-weight:850}
+.chat-recording-panel button{border:0;border-radius:8px;padding:6px 9px;font-size:9px;font-weight:850;background:#fff;color:#8d312b}
+@keyframes voiceRecordingPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.78)}}
+.chat-message-bubble.has-attachment{padding:7px}
+.chat-message-bubble.has-attachment>p{padding:7px 5px 2px}
+.chat-message-bubble.has-attachment>.chat-message-meta{padding:0 5px 3px}
+.chat-message-attachment{min-width:190px}
+.chat-attachment-loading,.chat-attachment-error{padding:18px;color:var(--muted);font-size:9px;text-align:center}
+.chat-attachment-error{color:var(--bad)}
+.chat-image-attachment{display:block;border-radius:12px;overflow:hidden;background:#e8eef5}
+.chat-image-attachment img{display:block;width:min(420px,62vw);max-height:470px;object-fit:contain}
+.chat-voice-attachment{width:min(360px,62vw);padding:10px;background:rgba(255,255,255,.58);border-radius:11px}
+.chat-voice-label{display:flex;align-items:center;gap:6px;font-size:10px;margin-bottom:7px}
+.chat-voice-label span{font-size:17px}
+.chat-voice-attachment audio{display:block;width:100%;height:38px}
+.chat-voice-attachment>small{display:block;color:var(--muted);font-size:8px;margin-top:4px;text-align:right}
+@media(max-width:650px){
+  .chat-composer-main{grid-template-columns:auto minmax(0,1fr) auto}
+  .chat-media-button{width:41px;height:41px}
+  .chat-media-button small{display:none}
+  .chat-media-actions{gap:3px}
+  .chat-image-attachment img{width:min(390px,72vw)}
+  .chat-voice-attachment{width:min(330px,72vw)}
+}
+@media(max-width:430px){
+  .chat-composer-main{grid-template-columns:auto minmax(0,1fr)}
+  .chat-composer-main>.button{grid-column:1/-1;width:100%;height:39px}
+  .chat-media-actions{align-self:start}
+  .chat-audio-draft audio{width:55vw}
+  .chat-image-attachment img{width:75vw;max-height:390px}
+  .chat-voice-attachment{width:75vw}
+  .chat-media-note{font-size:7px}
+}
