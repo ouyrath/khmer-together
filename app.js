@@ -1231,8 +1231,8 @@ function closeCommentMenus(exceptMenu = null) {
   $$('.comment-menu.open').forEach(menu => {
     if (menu === exceptMenu) return;
     menu.classList.remove('open');
-    const bubble = menu.closest('.comment-content')?.querySelector('.comment-bubble-owner');
-    bubble?.setAttribute('aria-expanded', 'false');
+    const trigger = menu.closest('.comment-owner-controls')?.querySelector('.comment-menu-button');
+    trigger?.setAttribute('aria-expanded', 'false');
   });
 }
 
@@ -1279,15 +1279,19 @@ function renderComment(comment) {
   wrap.append(avatar, content);
 
   if (comment.user_id === currentUser.id) {
-    bubble.classList.add('comment-bubble-owner');
-    bubble.setAttribute('role', 'button');
-    bubble.setAttribute('tabindex', '0');
-    bubble.setAttribute('aria-haspopup', 'menu');
-    bubble.setAttribute('aria-expanded', 'false');
-    bubble.setAttribute('aria-label', 'Open options for your comment');
+    const controls = document.createElement('div');
+    controls.className = 'comment-owner-controls';
+
+    const menuButton = document.createElement('button');
+    menuButton.type = 'button';
+    menuButton.className = 'comment-menu-button';
+    menuButton.textContent = '⋯';
+    menuButton.setAttribute('aria-label', 'Comment options');
+    menuButton.setAttribute('aria-haspopup', 'menu');
+    menuButton.setAttribute('aria-expanded', 'false');
 
     const menu = document.createElement('div');
-    menu.className = 'comment-menu comment-bubble-menu';
+    menu.className = 'comment-menu';
     menu.setAttribute('role', 'menu');
 
     const editButton = document.createElement('button');
@@ -1298,8 +1302,8 @@ function renderComment(comment) {
     editButton.addEventListener('click', event => {
       event.stopPropagation();
       menu.classList.remove('open');
-      bubble.setAttribute('aria-expanded', 'false');
-      beginEditComment(comment, content, bubble);
+      menuButton.setAttribute('aria-expanded', 'false');
+      beginEditComment(comment, content, bubble, controls);
     });
 
     const deleteButton = document.createElement('button');
@@ -1310,34 +1314,23 @@ function renderComment(comment) {
     deleteButton.addEventListener('click', event => {
       event.stopPropagation();
       menu.classList.remove('open');
-      bubble.setAttribute('aria-expanded', 'false');
+      menuButton.setAttribute('aria-expanded', 'false');
       deleteComment(comment);
     });
 
     menu.append(editButton, deleteButton);
-    content.appendChild(menu);
+    controls.append(menuButton, menu);
+    wrap.appendChild(controls);
 
-    const toggleMenu = event => {
+    menuButton.addEventListener('click', event => {
       event.stopPropagation();
       const opening = !menu.classList.contains('open');
       closeCommentMenus(menu);
       menu.classList.toggle('open', opening);
-      bubble.setAttribute('aria-expanded', String(opening));
+      menuButton.setAttribute('aria-expanded', String(opening));
 
       if (opening) {
         setTimeout(() => editButton.focus(), 0);
-      }
-    };
-
-    bubble.addEventListener('click', toggleMenu);
-    bubble.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        toggleMenu(event);
-      } else if (event.key === 'Escape') {
-        menu.classList.remove('open');
-        bubble.setAttribute('aria-expanded', 'false');
-        bubble.focus();
       }
     });
 
@@ -1345,8 +1338,8 @@ function renderComment(comment) {
     menu.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         menu.classList.remove('open');
-        bubble.setAttribute('aria-expanded', 'false');
-        bubble.focus();
+        menuButton.setAttribute('aria-expanded', 'false');
+        menuButton.focus();
       }
     });
   }
@@ -1354,10 +1347,11 @@ function renderComment(comment) {
   return wrap;
 }
 
-function beginEditComment(comment, content, bubble) {
+function beginEditComment(comment, content, bubble, controls = null) {
   if (content.querySelector('.comment-edit-form')) return;
 
   bubble.classList.add('hidden');
+  controls?.classList.add('hidden');
 
   const form = document.createElement('form');
   form.className = 'comment-edit-form';
@@ -1389,6 +1383,7 @@ function beginEditComment(comment, content, bubble) {
   cancelButton.addEventListener('click', () => {
     form.remove();
     bubble.classList.remove('hidden');
+    controls?.classList.remove('hidden');
   });
 
   form.addEventListener('submit', async event => {
@@ -1403,6 +1398,7 @@ function beginEditComment(comment, content, bubble) {
     if (newBody === comment.body) {
       form.remove();
       bubble.classList.remove('hidden');
+      controls?.classList.remove('hidden');
       return;
     }
 
