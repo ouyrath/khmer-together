@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Khmer Together — a welcoming social community connecting Khmer people everywhere.">
+  <meta name="theme-color" content="#0f4c81">
+  <title>Khmer Together</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Khmer Together home">
+      <span class="brand-mark">KT</span>
+      <span>
+        <strong>Khmer Together</strong>
+        <small>Connecting Khmer everywhere</small>
+      </span>
+    </a>
+
+    <nav id="topActions" class="top-actions hidden">
+      <button id="newPostTop" class="button small primary" type="button">Create post</button>
+      <button id="signOutButton" class="button small ghost" type="button">Sign out</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="authView" class="auth-shell">
+      <div class="hero">
+        <span class="eyebrow">KHMER COMMUNITY · SOCIAL · SUPPORT</span>
+        <h1>Share, connect, and grow together.</h1>
+        <p>
+          Khmer Together is a welcoming place for Khmer people to share stories,
+          celebrate culture, support businesses, find opportunities, and stay connected.
+        </p>
+        <div class="hero-points">
+          <div><span>✓</span><p><strong>Share your life</strong><br>Post updates, photos, achievements, and community news.</p></div>
+          <div><span>✓</span><p><strong>Support one another</strong><br>Follow Khmer creators, businesses, families, and friends.</p></div>
+          <div><span>✓</span><p><strong>Built for community</strong><br>Simple, friendly, and designed to grow step by step.</p></div>
+        </div>
+        <p class="khmer-tagline" lang="km">ភ្ជាប់ខ្មែរគ្រប់ទីកន្លែង</p>
+      </div>
+
+      <section class="auth-card" aria-labelledby="authTitle">
+        <h2 id="authTitle">Welcome</h2>
+        <p class="muted">Sign in or create your free account.</p>
+
+        <button id="googleButton" class="button google" type="button">
+          <span class="google-icon">G</span> Continue with Google
+        </button>
+
+        <div class="divider"><span>or use email</span></div>
+
+        <form id="authForm">
+          <label>
+            Email address
+            <input id="emailInput" type="email" autocomplete="email" required placeholder="you@example.com">
+          </label>
+          <label>
+            Password
+            <input id="passwordInput" type="password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters">
+          </label>
+          <button id="emailAuthButton" class="button primary full" type="submit">Sign in</button>
+        </form>
+
+        <button id="toggleAuthMode" class="text-button" type="button">
+          New here? Create an account
+        </button>
+        <p id="authMessage" class="form-message" role="status"></p>
+      </section>
+    </section>
+
+    <section id="appView" class="app-shell hidden">
+      <aside class="sidebar card">
+        <div class="profile-summary">
+          <div id="myAvatar" class="avatar large">KT</div>
+          <div>
+            <strong id="myName">Khmer Together Member</strong>
+            <span id="myUsername">@member</span>
+          </div>
+        </div>
+
+        <button id="editProfileButton" class="button ghost full" type="button">Edit profile</button>
+
+        <nav class="side-nav" aria-label="Main navigation">
+          <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
+          <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
+        </nav>
+
+        <div class="community-note">
+          <strong>Khmer Together</strong>
+          <p>Be kind, respectful, helpful, and proud of our community.</p>
+        </div>
+      </aside>
+
+      <section class="feed-column">
+        <section class="composer card">
+          <div class="composer-row">
+            <div id="composerAvatar" class="avatar">KT</div>
+            <button id="openComposerButton" class="composer-prompt" type="button">
+              Share something with the Khmer community…
+            </button>
+          </div>
+        </section>
+
+        <div class="feed-heading">
+          <div>
+            <h2 id="feedTitle">Community feed</h2>
+            <p id="feedSubtitle">Latest posts from Khmer Together members.</p>
+          </div>
+          <button id="refreshButton" class="icon-button" type="button" title="Refresh feed" aria-label="Refresh feed">↻</button>
+        </div>
+
+        <div id="loadingFeed" class="loading-card card">Loading community posts…</div>
+        <div id="emptyFeed" class="empty-card card hidden">
+          <div class="empty-icon">✦</div>
+          <h3>No posts yet</h3>
+          <p>Be the first person to share something with the community.</p>
+          <button id="emptyCreatePost" class="button primary" type="button">Create the first post</button>
+        </div>
+        <div id="feed" class="feed"></div>
+      </section>
+
+      <aside class="rightbar">
+        <section class="card welcome-card">
+          <span class="mini-badge">WELCOME</span>
+          <h3>Stronger together</h3>
+          <p>Celebrate Khmer culture, support Khmer businesses, and help community members succeed.</p>
+        </section>
+
+        <section class="card guidelines">
+          <h3>Community guidelines</h3>
+          <ul>
+            <li>Use your real identity.</li>
+            <li>Be respectful and helpful.</li>
+            <li>No scams, hate, or harassment.</li>
+            <li>Report unsafe content.</li>
+          </ul>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="postDialog" class="modal">
+    <form id="postForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Create post</h2>
+          <p>Share with the Khmer Together community.</p>
+        </div>
+        <button class="close-button" value="cancel" aria-label="Close">×</button>
+      </div>
+
+      <label>
+        Your message
+        <textarea id="postBody" maxlength="2000" placeholder="What would you like to share?"></textarea>
+      </label>
+
+      <label class="upload-box" for="postImage">
+        <span class="upload-icon">＋</span>
+        <strong>Add a photo</strong>
+        <small>JPG, PNG, GIF, or WebP — maximum 8 MB</small>
+        <input id="postImage" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+      </label>
+
+      <div id="imagePreviewWrap" class="image-preview-wrap hidden">
+        <img id="imagePreview" alt="Selected post preview">
+        <button id="removeImageButton" class="remove-image" type="button">Remove photo</button>
+      </div>
+
+      <p id="postMessage" class="form-message" role="status"></p>
+      <button id="publishButton" class="button primary full" type="submit">Publish post</button>
+    </form>
+  </dialog>
+
+  <dialog id="profileDialog" class="modal">
+    <form id="profileForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Edit profile</h2>
+          <p>Help the community know who you are.</p>
+        </div>
+        <button class="close-button" value="cancel" aria-label="Close">×</button>
+      </div>
+
+      <label>
+        Display name
+        <input id="profileName" maxlength="80" required placeholder="Your full name">
+      </label>
+      <label>
+        Username
+        <div class="username-field"><span>@</span><input id="profileUsername" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}" required placeholder="david_yanna"></div>
+        <small>3–30 letters, numbers, or underscores.</small>
+      </label>
+      <label>
+        Bio
+        <textarea id="profileBio" maxlength="240" placeholder="Tell the Khmer community a little about yourself."></textarea>
+      </label>
+
+      <p id="profileMessage" class="form-message" role="status"></p>
+      <button id="saveProfileButton" class="button primary full" type="submit">Save profile</button>
+    </form>
+  </dialog>
+
+  <template id="postTemplate">
+    <article class="post-card card">
+      <header class="post-header">
+        <div class="post-author">
+          <div class="avatar post-avatar"></div>
+          <div>
+            <strong class="post-name"></strong>
+            <span><span class="post-username"></span> · <time class="post-time"></time></span>
+          </div>
+        </div>
+        <div class="post-actions-top">
+          <button class="follow-button button small ghost" type="button"></button>
+          <button class="delete-post icon-button danger hidden" type="button" title="Delete post" aria-label="Delete post">⋯</button>
+        </div>
+      </header>
+
+      <p class="post-body"></p>
+      <img class="post-image hidden" alt="Post image">
+
+      <div class="post-stats">
+        <span class="like-count">0 likes</span>
+        <span class="comment-count">0 comments</span>
+      </div>
+
+      <div class="post-actions">
+        <button class="like-button" type="button"><span>♡</span> Like</button>
+        <button class="comment-focus" type="button"><span>◯</span> Comment</button>
+      </div>
+
+      <div class="comments"></div>
+
+      <form class="comment-form">
+        <div class="avatar comment-avatar"></div>
+        <input class="comment-input" maxlength="500" required placeholder="Write a comment…">
+        <button type="submit" aria-label="Post comment">➤</button>
+      </form>
+    </article>
+  </template>
+
+  <script src="/config.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
