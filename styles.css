@@ -267,3 +267,33 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .post-edit-photo-button:last-child{grid-column:1/-1}
   .post-edit-image-preview img{max-height:260px}
 }
+
+
+/* Block user and blocked-users management */
+.blocked-users-view{display:grid;gap:16px}
+.blocked-page-header{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:18px
+}
+.blocked-page-header h2{font-size:28px;letter-spacing:-.03em;margin:6px 0 3px}
+.blocked-page-header p{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+.blocked-users-list{display:grid;gap:11px}
+.blocked-user-card{
+  padding:15px 17px;display:flex;align-items:center;justify-content:space-between;gap:14px
+}
+.blocked-user-identity{display:flex;align-items:center;gap:12px;min-width:0}
+.blocked-user-identity .avatar{flex:0 0 auto}
+.blocked-user-identity strong,
+.blocked-user-identity span,
+.blocked-user-identity small{display:block}
+.blocked-user-identity strong{font-size:14px}
+.blocked-user-identity span{color:var(--muted);font-size:12px;margin-top:2px}
+.blocked-user-identity small{color:var(--muted);font-size:10px;margin-top:4px}
+.unblock-user-button{flex:0 0 auto}
+.blocked-users-error{padding:18px;color:var(--bad);font-weight:750}
+.post-actions-top .post-menu-trigger{flex:0 0 auto}
+@media(max-width:560px){
+  .blocked-page-header{align-items:center}
+  .blocked-page-header h2{font-size:24px}
+  .blocked-user-card{padding:13px}
+  .blocked-user-identity{gap:9px}
+}

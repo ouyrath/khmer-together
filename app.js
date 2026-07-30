@@ -14,6 +14,7 @@ let removeProfileImageRequested = false;
 let reportingPostId = null;
 let isAdmin = false;
 let adminReports = [];
+let blockedUsers = [];
 const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [] };
 
@@ -47,7 +48,11 @@ const els = {
   adminReportsNav: $('#adminReportsNav'), adminReportsView: $('#adminReportsView'),
   adminReportsList: $('#adminReportsList'), adminReportsLoading: $('#adminReportsLoading'),
   adminReportsEmpty: $('#adminReportsEmpty'), adminStatusFilter: $('#adminStatusFilter'),
-  adminRefreshButton: $('#adminRefreshButton'), adminSummary: $('#adminSummary')
+  adminRefreshButton: $('#adminRefreshButton'), adminSummary: $('#adminSummary'),
+  blockedUsersNav: $('#blockedUsersNav'), blockedUsersView: $('#blockedUsersView'),
+  blockedUsersList: $('#blockedUsersList'), blockedUsersLoading: $('#blockedUsersLoading'),
+  blockedUsersEmpty: $('#blockedUsersEmpty'), blockedUsersSummary: $('#blockedUsersSummary'),
+  blockedUsersRefreshButton: $('#blockedUsersRefreshButton')
 };
 
 function initials(name = 'KT') {
@@ -149,6 +154,7 @@ function bindEvents() {
   els.reportForm.addEventListener('submit', submitPostReport);
   els.adminStatusFilter.addEventListener('change', renderAdminReports);
   els.adminRefreshButton.addEventListener('click', loadAdminReports);
+  els.blockedUsersRefreshButton.addEventListener('click', loadBlockedUsers);
   $$('.close-button').forEach(button => {
     button.addEventListener('click', () => button.closest('dialog')?.close());
   });
@@ -169,6 +175,7 @@ async function handleSession(session) {
     currentProfile = null;
     isAdmin = false;
     adminReports = [];
+    blockedUsers = [];
     els.adminReportsNav.classList.add('hidden');
     els.authView.classList.remove('hidden');
     els.appView.classList.add('hidden');
@@ -204,15 +211,26 @@ function switchView(mode, load = true) {
   $$('[data-feed]').forEach(item => item.classList.toggle('active', item.dataset.feed === mode));
 
   const adminMode = mode === 'admin';
-  els.composerCard.classList.toggle('hidden', adminMode);
-  els.feedHeading.classList.toggle('hidden', adminMode);
-  els.feed.classList.toggle('hidden', adminMode);
+  const blockedMode = mode === 'blocked';
+  const specialMode = adminMode || blockedMode;
+
+  els.composerCard.classList.toggle('hidden', specialMode);
+  els.feedHeading.classList.toggle('hidden', specialMode);
+  els.feed.classList.toggle('hidden', specialMode);
   els.adminReportsView.classList.toggle('hidden', !adminMode);
+  els.blockedUsersView.classList.toggle('hidden', !blockedMode);
 
   if (adminMode) {
     els.loading.classList.add('hidden');
     els.empty.classList.add('hidden');
     if (load) loadAdminReports();
+    return;
+  }
+
+  if (blockedMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
+    if (load) loadBlockedUsers();
     return;
   }
 
@@ -473,7 +491,7 @@ async function loadFeed() {
 }
 
 function renderFeed() {
-  if (feedMode === 'admin') return;
+  if (feedMode === 'admin' || feedMode === 'blocked') return;
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
@@ -542,69 +560,74 @@ function renderPost(post, followingIds) {
   followButton.addEventListener('click', () => toggleFollow(post.user_id,following));
 
   const reportButton = $('.report-post',node);
-  reportButton.classList.toggle('hidden',isMine);
-  reportButton.addEventListener('click', () => openReportDialog(post.id));
+  reportButton.classList.toggle('hidden', isMine);
 
   const oldDeleteButton = $('.delete-post',node);
   oldDeleteButton.classList.toggle('hidden', !isMine);
 
-  if (isMine) {
-    oldDeleteButton.textContent = '⋯';
-    oldDeleteButton.classList.remove('danger');
-    oldDeleteButton.classList.add('post-menu-trigger');
-    oldDeleteButton.setAttribute('aria-label', 'Post options');
-    oldDeleteButton.setAttribute('aria-haspopup', 'menu');
-    oldDeleteButton.setAttribute('aria-expanded', 'false');
+  const createPostMenu = (trigger, items) => {
+    trigger.textContent = '⋯';
+    trigger.classList.remove('danger');
+    trigger.classList.add('post-menu-trigger');
+    trigger.setAttribute('aria-label', 'Post options');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
 
     const menu = document.createElement('div');
     menu.className = 'post-owner-menu';
     menu.setAttribute('role', 'menu');
 
-    const editButton = document.createElement('button');
-    editButton.type = 'button';
-    editButton.className = 'post-owner-menu-item';
-    editButton.setAttribute('role', 'menuitem');
-    editButton.textContent = 'Edit post';
-    editButton.addEventListener('click', event => {
-      event.stopPropagation();
-      menu.classList.remove('open');
-      oldDeleteButton.setAttribute('aria-expanded', 'false');
-      beginEditPost(post, node);
-    });
+    for (const item of items) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `post-owner-menu-item ${item.danger ? 'danger' : ''}`.trim();
+      button.setAttribute('role', 'menuitem');
+      button.textContent = item.label;
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        menu.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+        item.action();
+      });
+      menu.appendChild(button);
+    }
 
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'post-owner-menu-item danger';
-    deleteButton.setAttribute('role', 'menuitem');
-    deleteButton.textContent = 'Delete post';
-    deleteButton.addEventListener('click', event => {
-      event.stopPropagation();
-      menu.classList.remove('open');
-      oldDeleteButton.setAttribute('aria-expanded', 'false');
-      deletePost(post);
-    });
-
-    menu.append(editButton, deleteButton);
     $('.post-actions-top',node).appendChild(menu);
 
-    oldDeleteButton.addEventListener('click', event => {
+    trigger.addEventListener('click', event => {
       event.stopPropagation();
       const opening = !menu.classList.contains('open');
       closePostMenus(menu);
       closeCommentMenus();
       menu.classList.toggle('open', opening);
-      oldDeleteButton.setAttribute('aria-expanded', String(opening));
-      if (opening) setTimeout(() => editButton.focus(), 0);
+      trigger.setAttribute('aria-expanded', String(opening));
+      if (opening) setTimeout(() => menu.querySelector('button')?.focus(), 0);
     });
 
     menu.addEventListener('click', event => event.stopPropagation());
     menu.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         menu.classList.remove('open');
-        oldDeleteButton.setAttribute('aria-expanded', 'false');
-        oldDeleteButton.focus();
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.focus();
       }
     });
+  };
+
+  if (isMine) {
+    createPostMenu(oldDeleteButton, [
+      { label: 'Edit post', action: () => beginEditPost(post, node) },
+      { label: 'Delete post', danger: true, action: () => deletePost(post) }
+    ]);
+  } else {
+    createPostMenu(reportButton, [
+      { label: 'Report post', action: () => openReportDialog(post.id) },
+      {
+        label: `Block @${profile.username}`,
+        danger: true,
+        action: () => blockUser(post.user_id, profile)
+      }
+    ]);
   }
 
   const commentsWrap = $('.comments',node);
@@ -1209,6 +1232,150 @@ async function deletePost(post) {
     await loadFeed();
   } catch (error) {
     showToast(error.message || 'Unable to delete post.');
+  }
+}
+
+
+async function blockUser(userId, profile = {}) {
+  if (!userId || userId === currentUser.id) return;
+
+  const name = profile.full_name || 'this member';
+  const username = profile.username ? ` (@${profile.username})` : '';
+  const confirmed = confirm(
+    `Block ${name}${username}?\n\n` +
+    'Their posts and comments will disappear from your feed. Neither of you will be able to follow, like, or comment on the other person’s posts.'
+  );
+  if (!confirmed) return;
+
+  try {
+    const { error } = await supabase.from('kt_blocks').insert({
+      blocker_id: currentUser.id,
+      blocked_id: userId
+    });
+
+    if (error) {
+      if (error.code === '23505') throw new Error('This member is already blocked.');
+      throw error;
+    }
+
+    showToast(`${name} was blocked.`);
+    await loadFeed();
+    if (feedMode === 'blocked') await loadBlockedUsers();
+  } catch (error) {
+    showToast(error.message || 'Unable to block this member.');
+  }
+}
+
+async function unblockUser(userId, profile = {}) {
+  const name = profile.full_name || 'this member';
+  if (!confirm(`Unblock ${name}? Their posts may appear in your feed again.`)) return;
+
+  try {
+    const { error } = await supabase
+      .from('kt_blocks')
+      .delete()
+      .eq('blocker_id', currentUser.id)
+      .eq('blocked_id', userId);
+
+    if (error) throw error;
+
+    showToast(`${name} was unblocked.`);
+    await Promise.all([loadBlockedUsers(), loadFeed()]);
+  } catch (error) {
+    showToast(error.message || 'Unable to unblock this member.');
+  }
+}
+
+async function loadBlockedUsers() {
+  if (!currentUser) return;
+
+  els.blockedUsersLoading.classList.remove('hidden');
+  els.blockedUsersEmpty.classList.add('hidden');
+  els.blockedUsersList.innerHTML = '';
+  els.blockedUsersRefreshButton.disabled = true;
+
+  try {
+    const { data: blocks, error: blocksError } = await supabase
+      .from('kt_blocks')
+      .select('blocked_id,created_at')
+      .eq('blocker_id', currentUser.id)
+      .order('created_at', { ascending: false });
+
+    if (blocksError) throw blocksError;
+
+    const blockedIds = (blocks || []).map(block => block.blocked_id);
+    let profiles = [];
+
+    if (blockedIds.length) {
+      const { data, error } = await supabase
+        .from('kt_profiles')
+        .select('*')
+        .in('id', blockedIds);
+      if (error) throw error;
+      profiles = data || [];
+    }
+
+    const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
+    blockedUsers = (blocks || []).map(block => ({
+      ...block,
+      profile: profileMap.get(block.blocked_id) || {
+        id: block.blocked_id,
+        full_name: 'Khmer Together Member',
+        username: 'member'
+      }
+    }));
+
+    renderBlockedUsers();
+  } catch (error) {
+    els.blockedUsersList.innerHTML = '';
+    const message = document.createElement('section');
+    message.className = 'card blocked-users-error';
+    message.textContent = `Unable to load blocked users: ${error.message || error}`;
+    els.blockedUsersList.appendChild(message);
+  } finally {
+    els.blockedUsersLoading.classList.add('hidden');
+    els.blockedUsersRefreshButton.disabled = false;
+  }
+}
+
+function renderBlockedUsers() {
+  els.blockedUsersList.innerHTML = '';
+  els.blockedUsersEmpty.classList.toggle('hidden', blockedUsers.length > 0);
+  els.blockedUsersSummary.textContent = blockedUsers.length
+    ? `${blockedUsers.length} blocked ${blockedUsers.length === 1 ? 'member' : 'members'}. You can unblock them at any time.`
+    : 'People you block cannot follow, like, or comment on your posts.';
+
+  for (const entry of blockedUsers) {
+    const profile = entry.profile;
+    const card = document.createElement('article');
+    card.className = 'card blocked-user-card';
+
+    const identity = document.createElement('div');
+    identity.className = 'blocked-user-identity';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    setAvatar(avatar, profile);
+
+    const text = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = profile.full_name || 'Khmer Together Member';
+    const username = document.createElement('span');
+    username.textContent = `@${profile.username || 'member'}`;
+    const date = document.createElement('small');
+    date.textContent = `Blocked ${timeAgo(entry.created_at)}`;
+    text.append(name, username, date);
+
+    identity.append(avatar, text);
+
+    const unblock = document.createElement('button');
+    unblock.type = 'button';
+    unblock.className = 'button ghost small unblock-user-button';
+    unblock.textContent = 'Unblock';
+    unblock.addEventListener('click', () => unblockUser(entry.blocked_id, profile));
+
+    card.append(identity, unblock);
+    els.blockedUsersList.appendChild(card);
   }
 }
 

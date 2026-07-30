@@ -95,6 +95,7 @@
         <nav class="side-nav" aria-label="Main navigation">
           <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
           <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
+          <button id="blockedUsersNav" class="nav-item" data-feed="blocked" type="button"><span>⊘</span> Blocked users</button>
           <button id="adminReportsNav" class="nav-item admin-nav hidden" data-feed="admin" type="button"><span>⚑</span> Admin reports</button>
         </nav>
 
@@ -159,6 +160,25 @@
             <p>There is nothing that needs review here.</p>
           </div>
           <div id="adminReportsList" class="admin-reports-list"></div>
+        </section>
+
+        <section id="blockedUsersView" class="blocked-users-view hidden" aria-labelledby="blockedUsersTitle">
+          <div class="blocked-page-header">
+            <div>
+              <span class="mini-badge">PRIVACY &amp; SAFETY</span>
+              <h2 id="blockedUsersTitle">Blocked users</h2>
+              <p id="blockedUsersSummary">People you block cannot follow, like, or comment on your posts.</p>
+            </div>
+            <button id="blockedUsersRefreshButton" class="icon-button" type="button" title="Refresh blocked users" aria-label="Refresh blocked users">↻</button>
+          </div>
+
+          <div id="blockedUsersLoading" class="loading-card card hidden">Loading blocked users…</div>
+          <div id="blockedUsersEmpty" class="empty-card card hidden">
+            <div class="empty-icon">✓</div>
+            <h3>You have not blocked anyone</h3>
+            <p>Blocked members will appear here so you can unblock them later.</p>
+          </div>
+          <div id="blockedUsersList" class="blocked-users-list"></div>
         </section>
       </section>
 
