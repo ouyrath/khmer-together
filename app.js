@@ -627,29 +627,77 @@ function beginEditPost(post, postNode) {
 
   const bodyElement = $('.post-body', postNode);
   const imageElement = $('.post-image', postNode);
+
+  let selectedEditImage = null;
+  let removeImageRequested = false;
+  let previewObjectUrl = null;
+
   bodyElement.classList.add('hidden');
+  imageElement.classList.add('hidden');
 
   const form = document.createElement('form');
   form.className = 'post-edit-form';
 
-  const label = document.createElement('label');
-  label.textContent = post.image_url ? 'Edit post text or photo caption' : 'Edit post';
+  const textLabel = document.createElement('label');
+  textLabel.textContent = post.image_url ? 'Edit post text or photo caption' : 'Edit post text';
 
   const textarea = document.createElement('textarea');
   textarea.className = 'post-edit-textarea';
   textarea.maxLength = 2000;
   textarea.rows = 4;
   textarea.value = post.body || '';
-  textarea.placeholder = post.image_url
-    ? 'Add or edit a caption for this photo…'
-    : 'Write your post…';
+  textarea.placeholder = 'Write your post or photo caption…';
+  textLabel.appendChild(textarea);
 
-  const note = document.createElement('small');
-  note.className = 'post-edit-note';
-  note.textContent = 'The photo stays the same. You can edit the text or caption.';
+  const mediaSection = document.createElement('section');
+  mediaSection.className = 'post-edit-media';
 
-  label.appendChild(textarea);
-  form.append(label, note);
+  const mediaHeading = document.createElement('div');
+  mediaHeading.className = 'post-edit-media-heading';
+  const mediaTitle = document.createElement('strong');
+  mediaTitle.textContent = 'Photo';
+  const mediaStatus = document.createElement('span');
+  mediaStatus.className = 'post-edit-media-status';
+  mediaHeading.append(mediaTitle, mediaStatus);
+
+  const preview = document.createElement('div');
+  preview.className = 'post-edit-image-preview';
+
+  const previewImage = document.createElement('img');
+  previewImage.alt = 'Post photo preview';
+
+  const emptyPreview = document.createElement('div');
+  emptyPreview.className = 'post-edit-image-empty';
+  emptyPreview.innerHTML = '<span>＋</span><strong>No photo</strong>';
+
+  preview.append(previewImage, emptyPreview);
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/jpeg,image/png,image/gif,image/webp';
+  fileInput.className = 'post-edit-file-input';
+
+  const mediaButtons = document.createElement('div');
+  mediaButtons.className = 'post-edit-media-buttons';
+
+  const choosePhotoButton = document.createElement('button');
+  choosePhotoButton.type = 'button';
+  choosePhotoButton.className = 'post-edit-photo-button';
+  choosePhotoButton.textContent = post.image_url ? 'Replace photo' : 'Add photo';
+
+  const removePhotoButton = document.createElement('button');
+  removePhotoButton.type = 'button';
+  removePhotoButton.className = 'post-edit-photo-button danger';
+  removePhotoButton.textContent = 'Remove photo';
+
+  const keepOriginalButton = document.createElement('button');
+  keepOriginalButton.type = 'button';
+  keepOriginalButton.className = 'post-edit-photo-button';
+  keepOriginalButton.textContent = 'Keep original photo';
+
+  mediaButtons.append(choosePhotoButton, removePhotoButton, keepOriginalButton);
+  mediaSection.append(mediaHeading, preview, fileInput, mediaButtons);
+  form.append(textLabel, mediaSection);
 
   const actions = document.createElement('div');
   actions.className = 'post-edit-actions';
@@ -666,50 +714,196 @@ function beginEditPost(post, postNode) {
 
   actions.append(cancelButton, saveButton);
   form.appendChild(actions);
-
   postNode.insertBefore(form, imageElement);
 
-  cancelButton.addEventListener('click', () => {
-    form.remove();
-    bodyElement.classList.toggle('hidden', !post.body);
-  });
+  function revokePreviewUrl() {
+    if (previewObjectUrl) {
+      URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = null;
+    }
+  }
 
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const newBody = textarea.value.trim();
+  function effectivePhotoUrl() {
+    if (selectedEditImage && previewObjectUrl) return previewObjectUrl;
+    if (removeImageRequested) return null;
+    return post.image_url || null;
+  }
 
-    if (!newBody && !post.image_url) {
-      showToast('A text-only post cannot be empty.');
+  function updatePhotoEditor() {
+    const url = effectivePhotoUrl();
+    previewImage.classList.toggle('hidden', !url);
+    emptyPreview.classList.toggle('hidden', Boolean(url));
+
+    if (url) previewImage.src = url;
+    else previewImage.removeAttribute('src');
+
+    if (selectedEditImage) {
+      mediaStatus.textContent = 'New photo selected';
+    } else if (removeImageRequested && post.image_url) {
+      mediaStatus.textContent = 'Photo will be removed';
+    } else if (post.image_url) {
+      mediaStatus.textContent = 'Current photo';
+    } else {
+      mediaStatus.textContent = 'No photo';
+    }
+
+    choosePhotoButton.textContent = url ? 'Replace photo' : 'Add photo';
+    removePhotoButton.classList.toggle('hidden', !url);
+    keepOriginalButton.classList.toggle(
+      'hidden',
+      !post.image_url || (!selectedEditImage && !removeImageRequested)
+    );
+  }
+
+  choosePhotoButton.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      fileInput.value = '';
+      showToast('Choose a JPG, PNG, GIF, or WebP photo.');
       return;
     }
 
-    if (newBody === (post.body || '')) {
-      form.remove();
-      bodyElement.classList.toggle('hidden', !post.body);
+    if (file.size > 8 * 1024 * 1024) {
+      fileInput.value = '';
+      showToast('The photo must be 8 MB or smaller.');
+      return;
+    }
+
+    revokePreviewUrl();
+    selectedEditImage = file;
+    removeImageRequested = false;
+    previewObjectUrl = URL.createObjectURL(file);
+    updatePhotoEditor();
+  });
+
+  removePhotoButton.addEventListener('click', () => {
+    revokePreviewUrl();
+    selectedEditImage = null;
+    removeImageRequested = true;
+    fileInput.value = '';
+    updatePhotoEditor();
+  });
+
+  keepOriginalButton.addEventListener('click', () => {
+    revokePreviewUrl();
+    selectedEditImage = null;
+    removeImageRequested = false;
+    fileInput.value = '';
+    updatePhotoEditor();
+  });
+
+  function closeEditor() {
+    revokePreviewUrl();
+    form.remove();
+    bodyElement.classList.toggle('hidden', !post.body);
+    imageElement.classList.toggle('hidden', !post.image_url);
+  }
+
+  cancelButton.addEventListener('click', closeEditor);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+
+    const newBody = textarea.value.trim();
+    let newImageUrl = removeImageRequested ? null : (post.image_url || null);
+    let newlyUploadedPath = null;
+
+    if (!newBody && !selectedEditImage && !newImageUrl) {
+      showToast('Keep some text or add a photo before saving.');
+      return;
+    }
+
+    const bodyChanged = newBody !== (post.body || '');
+    const photoChanged = Boolean(selectedEditImage) || removeImageRequested;
+
+    if (!bodyChanged && !photoChanged) {
+      closeEditor();
       return;
     }
 
     textarea.disabled = true;
+    fileInput.disabled = true;
+    choosePhotoButton.disabled = true;
+    removePhotoButton.disabled = true;
+    keepOriginalButton.disabled = true;
+    cancelButton.disabled = true;
     saveButton.disabled = true;
     saveButton.textContent = 'Saving…';
 
     try {
+      if (selectedEditImage) {
+        const typeToExtension = {
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/gif': 'gif',
+          'image/webp': 'webp'
+        };
+        const extension = typeToExtension[selectedEditImage.type] || 'jpg';
+        newlyUploadedPath = `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('kt-post-images')
+          .upload(newlyUploadedPath, selectedEditImage, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: selectedEditImage.type
+          });
+
+        if (uploadError) throw uploadError;
+
+        newImageUrl = supabase.storage
+          .from('kt-post-images')
+          .getPublicUrl(newlyUploadedPath).data.publicUrl;
+      }
+
+      if (!newBody && !newImageUrl) {
+        throw new Error('A post must contain text or a photo.');
+      }
+
       const { error } = await supabase
         .from('kt_posts')
-        .update({ body: newBody })
+        .update({
+          body: newBody,
+          image_url: newImageUrl
+        })
         .eq('id', post.id)
         .eq('user_id', currentUser.id);
+
       if (error) throw error;
 
+      if (post.image_url && post.image_url !== newImageUrl) {
+        const oldPath = storagePathFromPublicUrl(post.image_url, 'kt-post-images');
+        if (oldPath) {
+          await supabase.storage.from('kt-post-images').remove([oldPath]);
+        }
+      }
+
+      revokePreviewUrl();
       showToast('Post updated.');
       await loadFeed();
     } catch (error) {
+      if (newlyUploadedPath) {
+        await supabase.storage.from('kt-post-images').remove([newlyUploadedPath]);
+      }
+
       textarea.disabled = false;
+      fileInput.disabled = false;
+      choosePhotoButton.disabled = false;
+      removePhotoButton.disabled = false;
+      keepOriginalButton.disabled = false;
+      cancelButton.disabled = false;
       saveButton.disabled = false;
       saveButton.textContent = 'Save changes';
       showToast(error.message || 'Unable to update the post.');
     }
   });
+
+  updatePhotoEditor();
 
   setTimeout(() => {
     textarea.focus();

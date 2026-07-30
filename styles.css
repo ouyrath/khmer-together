@@ -228,3 +228,42 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .post-owner-menu{top:39px;right:0}
   .post-edit-form{margin:5px 12px 12px;padding:12px}
 }
+
+
+/* Edit both post text and photo */
+.post-edit-media{
+  margin-top:13px;padding-top:13px;border-top:1px solid var(--line)
+}
+.post-edit-media-heading{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px
+}
+.post-edit-media-heading strong{font-size:12px}
+.post-edit-media-status{color:var(--muted);font-size:10px;font-weight:700}
+.post-edit-image-preview{
+  min-height:128px;border:1px dashed #b8c6d7;border-radius:13px;background:#fff;
+  overflow:hidden;display:grid;place-items:center
+}
+.post-edit-image-preview img{
+  display:block;width:100%;max-height:330px;object-fit:cover
+}
+.post-edit-image-empty{
+  min-height:128px;display:grid;place-items:center;align-content:center;gap:4px;
+  color:var(--muted);font-size:11px
+}
+.post-edit-image-empty span{font-size:28px;color:var(--blue);line-height:1}
+.post-edit-file-input{display:none}
+.post-edit-media-buttons{
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:10px
+}
+.post-edit-photo-button{
+  border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);
+  padding:8px 11px;font-size:11px;font-weight:850
+}
+.post-edit-photo-button:hover{background:var(--soft)}
+.post-edit-photo-button.danger{color:var(--bad)}
+.post-edit-photo-button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:470px){
+  .post-edit-media-buttons{display:grid;grid-template-columns:1fr 1fr}
+  .post-edit-photo-button:last-child{grid-column:1/-1}
+  .post-edit-image-preview img{max-height:260px}
+}
