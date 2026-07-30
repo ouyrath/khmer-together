@@ -29,6 +29,18 @@ let notificationFilter = 'all';
 let unreadNotificationCount = 0;
 let notificationChannel = null;
 let notificationPollTimer = null;
+let conversations = [];
+let conversationProfiles = new Map();
+let conversationMessages = [];
+let activeConversation = null;
+let activeChatProfile = null;
+let activeChatMessages = [];
+let activeChatMessagingAllowed = true;
+let unreadMessageCount = 0;
+let messageChannel = null;
+let messagePollTimer = null;
+let reportingConversationId = null;
+let reportingConversationMember = null;
 const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [], blocks: [] };
 
@@ -100,7 +112,28 @@ const els = {
   notificationsEmptyText: $('#notificationsEmptyText'),
   notificationsSummary: $('#notificationsSummary'),
   notificationsRefreshButton: $('#notificationsRefreshButton'),
-  markAllNotificationsRead: $('#markAllNotificationsRead')
+  markAllNotificationsRead: $('#markAllNotificationsRead'),
+  messageTopButton: $('#messageTopButton'), messageTopBadge: $('#messageTopBadge'),
+  messagesNav: $('#messagesNav'), messageNavBadge: $('#messageNavBadge'),
+  messagesView: $('#messagesView'), messagesSummary: $('#messagesSummary'),
+  messagesLoading: $('#messagesLoading'), messagesEmpty: $('#messagesEmpty'),
+  conversationsList: $('#conversationsList'), messagesRefreshButton: $('#messagesRefreshButton'),
+  findMembersForMessages: $('#findMembersForMessages'), chatView: $('#chatView'),
+  chatBackButton: $('#chatBackButton'), chatMemberButton: $('#chatMemberButton'),
+  chatMemberAvatar: $('#chatMemberAvatar'), chatMemberName: $('#chatMemberName'),
+  chatMemberUsername: $('#chatMemberUsername'), chatReportButton: $('#chatReportButton'),
+  chatBlockButton: $('#chatBlockButton'), chatPrivacyNote: $('#chatPrivacyNote'),
+  chatBlockedNotice: $('#chatBlockedNotice'), chatLoading: $('#chatLoading'),
+  chatEmpty: $('#chatEmpty'), chatMessages: $('#chatMessages'),
+  chatComposer: $('#chatComposer'), chatMessageInput: $('#chatMessageInput'),
+  sendMessageButton: $('#sendMessageButton'), chatMessageStatus: $('#chatMessageStatus'),
+  conversationReportDialog: $('#conversationReportDialog'),
+  conversationReportForm: $('#conversationReportForm'),
+  conversationReportReason: $('#conversationReportReason'),
+  conversationReportDetails: $('#conversationReportDetails'),
+  conversationReportMessage: $('#conversationReportMessage'),
+  submitConversationReport: $('#submitConversationReportButton'),
+  reportedConversationMember: $('#reportedConversationMember')
 };
 
 function initials(name = 'KT') {
@@ -287,6 +320,20 @@ function bindEvents() {
   });
   els.notificationsRefreshButton.addEventListener('click', loadNotifications);
   els.markAllNotificationsRead.addEventListener('click', markAllNotificationsAsRead);
+  els.messageTopButton.addEventListener('click', () => {
+    if (location.pathname.startsWith('/u/')) history.pushState({}, '', '/');
+    switchView('messages');
+  });
+  els.messagesRefreshButton.addEventListener('click', loadConversations);
+  els.findMembersForMessages.addEventListener('click', () => switchView('members'));
+  els.chatBackButton.addEventListener('click', () => switchView('messages'));
+  els.chatMemberButton.addEventListener('click', () => {
+    if (activeChatProfile?.id) openMemberProfile(activeChatProfile.id, { returnMode: 'messages' });
+  });
+  els.chatReportButton.addEventListener('click', openConversationReportDialog);
+  els.chatBlockButton.addEventListener('click', blockActiveChatMember);
+  els.chatComposer.addEventListener('submit', sendChatMessage);
+  els.conversationReportForm.addEventListener('submit', submitConversationReport);
   $$('[data-notification-filter]').forEach(button => {
     button.addEventListener('click', () => {
       notificationFilter = button.dataset.notificationFilter;
@@ -315,7 +362,7 @@ function bindEvents() {
 }
 
 async function handleSession(session) {
-  await stopNotificationUpdates();
+  await Promise.all([stopNotificationUpdates(), stopMessageUpdates()]);
 
   currentUser = session?.user || null;
   if (!currentUser) {
@@ -329,7 +376,15 @@ async function handleSession(session) {
     notificationProfiles = new Map();
     notificationPosts = new Map();
     unreadNotificationCount = 0;
+    conversations = [];
+    conversationProfiles = new Map();
+    conversationMessages = [];
+    activeConversation = null;
+    activeChatProfile = null;
+    activeChatMessages = [];
+    unreadMessageCount = 0;
     updateNotificationBadges();
+    updateMessageBadges();
     els.adminReportsNav.classList.add('hidden');
     els.authView.classList.remove('hidden');
     els.appView.classList.add('hidden');
@@ -345,8 +400,9 @@ async function handleSession(session) {
   await checkAdminAccess();
   updateMyProfileUI();
   switchView('all', false, false);
-  await Promise.all([loadFeed(), loadNotificationCount()]);
+  await Promise.all([loadFeed(), loadNotificationCount(), loadUnreadMessageCount()]);
   startNotificationUpdates();
+  startMessageUpdates();
   await handleLocationRoute();
 }
 
@@ -367,7 +423,7 @@ function switchView(mode, load = true, updateHistory = true) {
 
   feedMode = mode;
   $$('[data-feed]').forEach(item => {
-    const activeMode = mode === 'profile' ? 'members' : mode;
+    const activeMode = mode === 'profile' ? 'members' : mode === 'chat' ? 'messages' : mode;
     item.classList.toggle('active', item.dataset.feed === activeMode);
   });
 
@@ -376,7 +432,9 @@ function switchView(mode, load = true, updateHistory = true) {
   const membersMode = mode === 'members';
   const profileMode = mode === 'profile';
   const notificationsMode = mode === 'notifications';
-  const specialMode = adminMode || blockedMode || membersMode || profileMode || notificationsMode;
+  const messagesMode = mode === 'messages';
+  const chatMode = mode === 'chat';
+  const specialMode = adminMode || blockedMode || membersMode || profileMode || notificationsMode || messagesMode || chatMode;
 
   els.composerCard.classList.toggle('hidden', specialMode);
   els.feedHeading.classList.toggle('hidden', specialMode);
@@ -386,6 +444,8 @@ function switchView(mode, load = true, updateHistory = true) {
   els.membersView.classList.toggle('hidden', !membersMode);
   els.memberProfileView.classList.toggle('hidden', !profileMode);
   els.notificationsView.classList.toggle('hidden', !notificationsMode);
+  els.messagesView.classList.toggle('hidden', !messagesMode);
+  els.chatView.classList.toggle('hidden', !chatMode);
 
   if (updateHistory && !profileMode && location.pathname.startsWith('/u/')) {
     history.pushState({}, '', '/');
@@ -413,7 +473,7 @@ function switchView(mode, load = true, updateHistory = true) {
     return;
   }
 
-  if (profileMode) {
+  if (profileMode || chatMode) {
     els.loading.classList.add('hidden');
     els.empty.classList.add('hidden');
     return;
@@ -424,6 +484,14 @@ function switchView(mode, load = true, updateHistory = true) {
     els.empty.classList.add('hidden');
     if (load) loadNotifications();
     else renderNotifications();
+    return;
+  }
+
+  if (messagesMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
+    if (load) loadConversations();
+    else renderConversations();
     return;
   }
 
@@ -714,7 +782,7 @@ async function loadFeed() {
 }
 
 function renderFeed() {
-  if (['admin','blocked','members','profile','notifications'].includes(feedMode)) return;
+  if (['admin','blocked','members','profile','notifications','messages','chat'].includes(feedMode)) return;
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
@@ -1471,6 +1539,482 @@ async function deletePost(post) {
 
 
 
+
+function updateMessageBadges() {
+  const count = Math.max(0, Number(unreadMessageCount) || 0);
+  const label = count > 99 ? '99+' : String(count);
+
+  for (const badge of [els.messageTopBadge, els.messageNavBadge]) {
+    badge.textContent = label;
+    badge.classList.toggle('hidden', count === 0);
+  }
+
+  els.messageTopButton.setAttribute(
+    'aria-label',
+    count ? `Open messages, ${count} unread` : 'Open messages'
+  );
+}
+
+async function loadUnreadMessageCount() {
+  if (!currentUser) return;
+  try {
+    const { count, error } = await supabase
+      .from('kt_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipient_id', currentUser.id)
+      .is('read_at', null);
+    if (error) throw error;
+    unreadMessageCount = count || 0;
+    updateMessageBadges();
+  } catch (error) {
+    console.warn('Unable to load unread message count:', error);
+  }
+}
+
+function otherConversationUser(conversation) {
+  return conversation.user_one === currentUser.id
+    ? conversation.user_two
+    : conversation.user_one;
+}
+
+async function loadConversations() {
+  if (!currentUser) return;
+  els.messagesLoading.classList.remove('hidden');
+  els.messagesEmpty.classList.add('hidden');
+  els.conversationsList.innerHTML = '';
+  els.messagesRefreshButton.disabled = true;
+
+  try {
+    const { data: conversationRows, error: conversationError } = await supabase
+      .from('kt_conversations')
+      .select('*')
+      .or(`user_one.eq.${currentUser.id},user_two.eq.${currentUser.id}`)
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    if (conversationError) throw conversationError;
+
+    conversations = conversationRows || [];
+    const conversationIds = conversations.map(item => item.id);
+    const otherIds = [...new Set(conversations.map(otherConversationUser))];
+
+    const [messagesResult, profilesResult, unreadResult] = await Promise.all([
+      conversationIds.length
+        ? supabase.from('kt_messages')
+            .select('*')
+            .in('conversation_id', conversationIds)
+            .order('created_at', { ascending: false })
+            .limit(3000)
+        : Promise.resolve({ data: [], error: null }),
+      otherIds.length
+        ? supabase.from('kt_profiles').select('*').in('id', otherIds)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.from('kt_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', currentUser.id)
+        .is('read_at', null)
+    ]);
+
+    if (messagesResult.error) throw messagesResult.error;
+    if (profilesResult.error) throw profilesResult.error;
+    if (unreadResult.error) throw unreadResult.error;
+
+    conversationMessages = messagesResult.data || [];
+    conversationProfiles = new Map(
+      (profilesResult.data || []).map(profile => [profile.id, profile])
+    );
+
+    unreadMessageCount = unreadResult.count || 0;
+    updateMessageBadges();
+    renderConversations();
+  } catch (error) {
+    els.conversationsList.innerHTML = '';
+    const message = document.createElement('section');
+    message.className = 'card messages-error';
+    message.textContent = `Unable to load messages: ${error.message || error}`;
+    els.conversationsList.appendChild(message);
+  } finally {
+    els.messagesLoading.classList.add('hidden');
+    els.messagesRefreshButton.disabled = false;
+  }
+}
+
+function renderConversations() {
+  els.conversationsList.innerHTML = '';
+  els.messagesEmpty.classList.toggle('hidden', conversations.length > 0);
+  els.messagesSummary.textContent = unreadMessageCount
+    ? `${unreadMessageCount} unread ${unreadMessageCount === 1 ? 'message' : 'messages'}`
+    : 'Your one-to-one conversations.';
+
+  for (const conversation of conversations) {
+    const otherId = otherConversationUser(conversation);
+    const profile = conversationProfiles.get(otherId) || {
+      id: otherId,
+      full_name: 'Khmer Together Member',
+      username: 'member'
+    };
+    const messages = conversationMessages.filter(message => message.conversation_id === conversation.id);
+    const latest = messages[0] || null;
+    const unread = messages.filter(message =>
+      message.recipient_id === currentUser.id && !message.read_at
+    ).length;
+
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `card conversation-card ${unread ? 'unread' : ''}`.trim();
+    card.addEventListener('click', () => openConversation(conversation, profile));
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar conversation-avatar';
+    setAvatar(avatar, profile);
+
+    const content = document.createElement('span');
+    content.className = 'conversation-content';
+
+    const top = document.createElement('span');
+    top.className = 'conversation-topline';
+    const name = document.createElement('strong');
+    name.textContent = profile.full_name || 'Khmer Together Member';
+    const time = document.createElement('time');
+    time.textContent = timeAgo(latest?.created_at || conversation.updated_at);
+    top.append(name, time);
+
+    const preview = document.createElement('span');
+    preview.className = 'conversation-preview';
+    if (!latest) {
+      preview.textContent = 'Start the conversation.';
+    } else {
+      const prefix = latest.sender_id === currentUser.id ? 'You: ' : '';
+      preview.textContent = `${prefix}${latest.body}`;
+    }
+
+    const username = document.createElement('small');
+    username.textContent = `@${profile.username || 'member'}`;
+    content.append(top, preview, username);
+
+    card.append(avatar, content);
+    if (unread) {
+      const badge = document.createElement('strong');
+      badge.className = 'conversation-unread-badge';
+      badge.textContent = unread > 99 ? '99+' : String(unread);
+      card.appendChild(badge);
+    }
+    els.conversationsList.appendChild(card);
+  }
+}
+
+async function startConversation(profile) {
+  if (!profile || profile.id === currentUser.id) return;
+  try {
+    const { data, error } = await supabase.rpc('kt_get_or_create_conversation', {
+      other_user: profile.id
+    });
+    if (error) throw error;
+
+    const conversation = {
+      id: data,
+      user_one: currentUser.id < profile.id ? currentUser.id : profile.id,
+      user_two: currentUser.id < profile.id ? profile.id : currentUser.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    await openConversation(conversation, profile);
+  } catch (error) {
+    showToast(error.message || 'Unable to start this conversation.');
+  }
+}
+
+async function openConversation(conversation, profile = null) {
+  if (!conversation?.id) return;
+
+  activeConversation = conversation;
+  const otherId = otherConversationUser(conversation);
+  activeChatProfile = profile || conversationProfiles.get(otherId) || {
+    id: otherId,
+    full_name: 'Khmer Together Member',
+    username: 'member'
+  };
+
+  switchView('chat', false, false);
+  setAvatar(els.chatMemberAvatar, activeChatProfile);
+  els.chatMemberName.textContent = activeChatProfile.full_name || 'Khmer Together Member';
+  els.chatMemberUsername.textContent = `@${activeChatProfile.username || 'member'}`;
+  els.chatMessages.innerHTML = '';
+  els.chatEmpty.classList.add('hidden');
+  els.chatLoading.classList.remove('hidden');
+  setMessage(els.chatMessageStatus);
+
+  try {
+    const [messagesResult, allowedResult] = await Promise.all([
+      supabase.from('kt_messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: true })
+        .limit(1000),
+      supabase.rpc('kt_users_blocked', {
+        user_a: currentUser.id,
+        user_b: otherId
+      })
+    ]);
+
+    if (messagesResult.error) throw messagesResult.error;
+    if (allowedResult.error) throw allowedResult.error;
+
+    activeChatMessages = messagesResult.data || [];
+    activeChatMessagingAllowed = !Boolean(allowedResult.data);
+    updateChatAvailability();
+    await markActiveConversationRead();
+    renderChatMessages();
+    await loadUnreadMessageCount();
+  } catch (error) {
+    els.chatMessages.innerHTML = '';
+    setMessage(els.chatMessageStatus, error.message || 'Unable to load this conversation.');
+  } finally {
+    els.chatLoading.classList.add('hidden');
+  }
+}
+
+function updateChatAvailability() {
+  els.chatBlockedNotice.classList.toggle('hidden', activeChatMessagingAllowed);
+  els.chatComposer.classList.toggle('hidden', !activeChatMessagingAllowed);
+  els.chatBlockButton.textContent = activeChatMessagingAllowed ? 'Block' : 'Blocked';
+  els.chatBlockButton.disabled = !activeChatMessagingAllowed;
+}
+
+function renderChatMessages() {
+  els.chatMessages.innerHTML = '';
+  els.chatEmpty.classList.toggle('hidden', activeChatMessages.length > 0);
+
+  for (const message of activeChatMessages) {
+    const mine = message.sender_id === currentUser.id;
+    const row = document.createElement('div');
+    row.className = `chat-message-row ${mine ? 'mine' : 'theirs'}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-message-bubble';
+
+    const body = document.createElement('p');
+    body.textContent = message.body;
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-message-meta';
+    const time = document.createElement('time');
+    time.dateTime = message.created_at;
+    time.textContent = timeAgo(message.created_at);
+    meta.appendChild(time);
+
+    if (mine) {
+      const receipt = document.createElement('span');
+      receipt.textContent = message.read_at ? 'Read' : 'Sent';
+      meta.append(document.createTextNode(' · '), receipt);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'delete-chat-message';
+      deleteButton.textContent = 'Delete';
+      deleteButton.addEventListener('click', () => deleteChatMessage(message));
+      meta.append(document.createTextNode(' · '), deleteButton);
+    }
+
+    bubble.append(body, meta);
+    row.appendChild(bubble);
+    els.chatMessages.appendChild(row);
+  }
+
+  requestAnimationFrame(() => {
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+  });
+}
+
+async function sendChatMessage(event) {
+  event.preventDefault();
+  if (!activeConversation || !activeChatProfile || !activeChatMessagingAllowed) return;
+
+  const body = els.chatMessageInput.value.trim();
+  if (!body) return;
+
+  els.sendMessageButton.disabled = true;
+  els.sendMessageButton.textContent = 'Sending…';
+  setMessage(els.chatMessageStatus);
+
+  try {
+    const { error } = await supabase.from('kt_messages').insert({
+      conversation_id: activeConversation.id,
+      sender_id: currentUser.id,
+      recipient_id: activeChatProfile.id,
+      body
+    });
+    if (error) throw error;
+
+    els.chatMessageInput.value = '';
+    await openConversation(activeConversation, activeChatProfile);
+  } catch (error) {
+    setMessage(els.chatMessageStatus, error.message || 'Unable to send this message.');
+  } finally {
+    els.sendMessageButton.disabled = false;
+    els.sendMessageButton.textContent = 'Send';
+  }
+}
+
+async function markActiveConversationRead() {
+  if (!activeConversation) return;
+  try {
+    const { error } = await supabase.rpc('kt_mark_conversation_read', {
+      target_conversation: activeConversation.id
+    });
+    if (error) throw error;
+    const readAt = new Date().toISOString();
+    activeChatMessages = activeChatMessages.map(message =>
+      message.recipient_id === currentUser.id && !message.read_at
+        ? { ...message, read_at: readAt }
+        : message
+    );
+  } catch (error) {
+    console.warn('Unable to mark conversation read:', error);
+  }
+}
+
+async function deleteChatMessage(message) {
+  if (message.sender_id !== currentUser.id) return;
+  if (!confirm('Delete this message for both people? This cannot be undone.')) return;
+
+  try {
+    const { error } = await supabase
+      .from('kt_messages')
+      .delete()
+      .eq('id', message.id)
+      .eq('sender_id', currentUser.id);
+    if (error) throw error;
+
+    activeChatMessages = activeChatMessages.filter(item => item.id !== message.id);
+    renderChatMessages();
+    showToast('Message deleted.');
+  } catch (error) {
+    showToast(error.message || 'Unable to delete this message.');
+  }
+}
+
+async function blockActiveChatMember() {
+  if (!activeChatProfile || !activeChatMessagingAllowed) return;
+  const success = await blockUser(activeChatProfile.id, activeChatProfile);
+  if (success) {
+    activeChatMessagingAllowed = false;
+    updateChatAvailability();
+  }
+}
+
+function openConversationReportDialog() {
+  if (!activeConversation || !activeChatProfile) return;
+  reportingConversationId = activeConversation.id;
+  reportingConversationMember = activeChatProfile;
+  els.conversationReportReason.value = '';
+  els.conversationReportDetails.value = '';
+  setMessage(els.conversationReportMessage);
+
+  els.reportedConversationMember.innerHTML = '';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  setAvatar(avatar, activeChatProfile);
+  const text = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = activeChatProfile.full_name || 'Khmer Together Member';
+  const username = document.createElement('span');
+  username.textContent = `@${activeChatProfile.username || 'member'}`;
+  text.append(name, username);
+  els.reportedConversationMember.append(avatar, text);
+  els.conversationReportDialog.showModal();
+}
+
+async function submitConversationReport(event) {
+  event.preventDefault();
+  if (!reportingConversationId || !reportingConversationMember) return;
+
+  const reason = els.conversationReportReason.value;
+  const details = els.conversationReportDetails.value.trim();
+  if (!reason || !details) {
+    setMessage(els.conversationReportMessage, 'Please choose a reason and explain what happened.');
+    return;
+  }
+
+  els.submitConversationReport.disabled = true;
+  els.submitConversationReport.textContent = 'Submitting…';
+  setMessage(els.conversationReportMessage);
+
+  try {
+    const { error } = await supabase.from('kt_conversation_reports').insert({
+      conversation_id: reportingConversationId,
+      reporter_id: currentUser.id,
+      reported_id: reportingConversationMember.id,
+      reason,
+      details
+    });
+    if (error) {
+      if (error.code === '23505') throw new Error('You already reported this conversation.');
+      throw error;
+    }
+
+    els.conversationReportDialog.close();
+    showToast('Conversation report submitted privately.');
+    reportingConversationId = null;
+    reportingConversationMember = null;
+  } catch (error) {
+    setMessage(els.conversationReportMessage, error.message || 'Unable to submit this report.');
+  } finally {
+    els.submitConversationReport.disabled = false;
+    els.submitConversationReport.textContent = 'Submit conversation report';
+  }
+}
+
+function startMessageUpdates() {
+  if (!currentUser || messageChannel) return;
+
+  messageChannel = supabase
+    .channel(`kt-messages-${currentUser.id}`)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'kt_messages',
+      filter: `recipient_id=eq.${currentUser.id}`
+    }, async payload => {
+      if (activeConversation?.id === payload.new.conversation_id && feedMode === 'chat') {
+        await openConversation(activeConversation, activeChatProfile);
+      } else {
+        unreadMessageCount += 1;
+        updateMessageBadges();
+        showToast('You received a new private message.');
+        if (feedMode === 'messages') await loadConversations();
+      }
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE', schema: 'public', table: 'kt_messages',
+      filter: `sender_id=eq.${currentUser.id}`
+    }, async payload => {
+      if (activeConversation?.id === payload.new.conversation_id && feedMode === 'chat') {
+        const message = activeChatMessages.find(item => item.id === payload.new.id);
+        if (message) Object.assign(message, payload.new);
+        renderChatMessages();
+      }
+    })
+    .subscribe();
+
+  messagePollTimer = window.setInterval(async () => {
+    await loadUnreadMessageCount();
+    if (feedMode === 'messages') await loadConversations();
+    if (feedMode === 'chat' && activeConversation) {
+      await openConversation(activeConversation, activeChatProfile);
+    }
+  }, 45000);
+}
+
+async function stopMessageUpdates() {
+  if (messagePollTimer) {
+    clearInterval(messagePollTimer);
+    messagePollTimer = null;
+  }
+  if (messageChannel && supabase) {
+    try { await supabase.removeChannel(messageChannel); }
+    catch (error) { console.warn('Unable to close message channel:', error); }
+  }
+  messageChannel = null;
+}
+
 function updateNotificationBadges() {
   const count = Math.max(0, Number(unreadNotificationCount) || 0);
   const label = count > 99 ? '99+' : String(count);
@@ -1960,7 +2504,7 @@ async function openMemberProfile(userId, options = {}) {
 
   const {
     pushHistory = true,
-    returnMode = ['all','following','members'].includes(feedMode)
+    returnMode = ['all','following','members','notifications','messages'].includes(feedMode)
       ? feedMode
       : memberProfileReturnMode
   } = options;
@@ -2161,6 +2705,12 @@ function renderMemberProfile() {
     });
     els.memberProfileActions.appendChild(unblock);
   } else {
+    const message = document.createElement('button');
+    message.type = 'button';
+    message.className = 'button primary';
+    message.textContent = 'Message';
+    message.addEventListener('click', () => startConversation(profile));
+
     const follow = document.createElement('button');
     follow.type = 'button';
     follow.className = `button ${activeMemberStats.followingMember ? 'ghost' : 'primary'}`;
@@ -2196,7 +2746,7 @@ function renderMemberProfile() {
       }
     });
 
-    els.memberProfileActions.append(follow, report, block);
+    els.memberProfileActions.append(message, follow, report, block);
   }
 
   els.memberPostsList.innerHTML = '';
@@ -2471,6 +3021,7 @@ const REPORT_REASON_LABELS = {
   inappropriate: 'Inappropriate content',
   impersonation: 'Fake account or impersonation',
   unsafe_account: 'Unsafe or suspicious account',
+  unsafe_message: 'Threatening or unsafe messages',
   other: 'Other'
 };
 
@@ -2483,23 +3034,19 @@ async function loadAdminReports() {
   els.adminRefreshButton.disabled = true;
 
   try {
-    const [postReportsResult, memberReportsResult] = await Promise.all([
-      supabase.from('kt_reports')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200),
-      supabase.from('kt_member_reports')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200)
+    const [postReportsResult, memberReportsResult, conversationReportsResult] = await Promise.all([
+      supabase.from('kt_reports').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('kt_member_reports').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('kt_conversation_reports').select('*').order('created_at', { ascending: false }).limit(200)
     ]);
 
     if (postReportsResult.error) throw postReportsResult.error;
     if (memberReportsResult.error) throw memberReportsResult.error;
+    if (conversationReportsResult.error) throw conversationReportsResult.error;
 
     const postReports = postReportsResult.data || [];
     const memberReports = memberReportsResult.data || [];
-
+    const conversationReports = conversationReportsResult.data || [];
     const postIds = [...new Set(postReports.map(report => report.post_id).filter(Boolean))];
     let posts = [];
 
@@ -2513,6 +3060,8 @@ async function loadAdminReports() {
       ...postReports.map(report => report.reporter_id),
       ...memberReports.map(report => report.reporter_id),
       ...memberReports.map(report => report.reported_id),
+      ...conversationReports.map(report => report.reporter_id),
+      ...conversationReports.map(report => report.reported_id),
       ...posts.map(post => post.user_id)
     ].filter(Boolean))];
 
@@ -2529,23 +3078,29 @@ async function loadAdminReports() {
     const preparedPostReports = postReports.map(report => {
       const post = postMap.get(report.post_id) || null;
       return {
-        ...report,
-        kind: 'post',
-        post,
+        ...report, kind: 'post', post,
         reporter: profileMap.get(report.reporter_id) || null,
         author: post ? profileMap.get(post.user_id) || null : null
       };
     });
 
     const preparedMemberReports = memberReports.map(report => ({
-      ...report,
-      kind: 'member',
+      ...report, kind: 'member',
       reporter: profileMap.get(report.reporter_id) || null,
       reportedMember: profileMap.get(report.reported_id) || null
     }));
 
-    adminReports = [...preparedPostReports, ...preparedMemberReports]
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const preparedConversationReports = conversationReports.map(report => ({
+      ...report, kind: 'conversation',
+      reporter: profileMap.get(report.reporter_id) || null,
+      reportedMember: profileMap.get(report.reported_id) || null
+    }));
+
+    adminReports = [
+      ...preparedPostReports,
+      ...preparedMemberReports,
+      ...preparedConversationReports
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     renderAdminReports();
   } catch (error) {
@@ -2562,42 +3117,29 @@ async function loadAdminReports() {
 
 function renderAdminReports() {
   if (!isAdmin) return;
-
   const filter = els.adminStatusFilter.value;
-  const visible = filter === 'all'
-    ? adminReports
-    : adminReports.filter(report => report.status === filter);
-
+  const visible = filter === 'all' ? adminReports : adminReports.filter(report => report.status === filter);
   const openCount = adminReports.filter(report => report.status === 'open').length;
   const reviewingCount = adminReports.filter(report => report.status === 'reviewing').length;
-  const memberCount = adminReports.filter(report => report.kind === 'member').length;
-
-  els.adminSummary.textContent =
-    `${openCount} open · ${reviewingCount} reviewing · ${memberCount} member reports · ${adminReports.length} total`;
-
+  const conversationCount = adminReports.filter(report => report.kind === 'conversation').length;
+  els.adminSummary.textContent = `${openCount} open · ${reviewingCount} reviewing · ${conversationCount} conversation reports · ${adminReports.length} total`;
   els.adminReportsList.innerHTML = '';
   els.adminReportsEmpty.classList.toggle('hidden', visible.length > 0);
-
-  for (const report of visible) {
-    els.adminReportsList.appendChild(renderAdminReportCard(report));
-  }
+  for (const report of visible) els.adminReportsList.appendChild(renderAdminReportCard(report));
 }
 
 function renderAdminReportCard(report) {
   const card = document.createElement('article');
   card.className = 'card admin-report-card';
-
   const header = document.createElement('header');
   header.className = 'admin-report-header';
-
   const titleWrap = document.createElement('div');
   const reason = document.createElement('strong');
-  reason.textContent = `${report.kind === 'member' ? 'Member report' : 'Post report'} · ${REPORT_REASON_LABELS[report.reason] || report.reason}`;
-
+  const kindLabel = report.kind === 'conversation' ? 'Conversation report' : report.kind === 'member' ? 'Member report' : 'Post report';
+  reason.textContent = `${kindLabel} · ${REPORT_REASON_LABELS[report.reason] || report.reason}`;
   const meta = document.createElement('span');
   meta.textContent = `${timeAgo(report.created_at)} · Reported by ${report.reporter?.full_name || 'Member'} (@${report.reporter?.username || 'member'})`;
   titleWrap.append(reason, meta);
-
   const status = document.createElement('span');
   status.className = `report-status status-${report.status}`;
   status.textContent = report.status;
@@ -2614,140 +3156,69 @@ function renderAdminReportCard(report) {
   if (report.kind === 'post') {
     const postBox = document.createElement('section');
     postBox.className = 'reported-post-preview';
-
     const postLabel = document.createElement('small');
-    postLabel.textContent = report.author
-      ? `Reported post by ${report.author.full_name} (@${report.author.username})`
-      : 'Reported post';
+    postLabel.textContent = report.author ? `Reported post by ${report.author.full_name} (@${report.author.username})` : 'Reported post';
     postBox.appendChild(postLabel);
-
     if (report.post) {
-      if (report.post.body) {
-        const postBody = document.createElement('p');
-        postBody.textContent = report.post.body;
-        postBox.appendChild(postBody);
-      }
-      if (report.post.image_url) {
-        const image = document.createElement('img');
-        image.src = report.post.image_url;
-        image.alt = 'Reported post image';
-        image.loading = 'lazy';
-        postBox.appendChild(image);
-      }
+      if (report.post.body) { const p=document.createElement('p'); p.textContent=report.post.body; postBox.appendChild(p); }
+      if (report.post.image_url) { const img=document.createElement('img'); img.src=report.post.image_url; img.alt='Reported post image'; img.loading='lazy'; postBox.appendChild(img); }
     } else {
-      const missing = document.createElement('p');
-      missing.className = 'muted';
-      missing.textContent = 'This post is no longer available.';
-      postBox.appendChild(missing);
+      const missing=document.createElement('p'); missing.className='muted'; missing.textContent='This post is no longer available.'; postBox.appendChild(missing);
     }
-
     card.appendChild(postBox);
   } else {
     const memberBox = document.createElement('section');
     memberBox.className = 'reported-member-admin-preview';
-
     const member = report.reportedMember;
-    const avatar = document.createElement('div');
-    avatar.className = 'avatar';
-    setAvatar(avatar, member || {});
-
-    const identity = document.createElement('div');
-    const name = document.createElement('strong');
-    name.textContent = member?.full_name || 'Member unavailable';
-    const username = document.createElement('span');
-    username.textContent = `@${member?.username || 'member'}`;
-    const bio = document.createElement('p');
-    bio.textContent = member?.bio || 'No bio available.';
-    identity.append(name, username, bio);
-
-    memberBox.append(avatar, identity);
-    card.appendChild(memberBox);
+    const avatar=document.createElement('div'); avatar.className='avatar'; setAvatar(avatar, member || {});
+    const identity=document.createElement('div');
+    const name=document.createElement('strong'); name.textContent=member?.full_name || 'Member unavailable';
+    const username=document.createElement('span'); username.textContent=`@${member?.username || 'member'}`;
+    const note=document.createElement('p');
+    note.textContent = report.kind === 'conversation'
+      ? 'Conversation report only. Private message contents are not shown to administrators.'
+      : (member?.bio || 'No bio available.');
+    identity.append(name, username, note); memberBox.append(avatar, identity); card.appendChild(memberBox);
   }
 
-  const actions = document.createElement('div');
-  actions.className = 'admin-report-actions';
-
-  if (report.status !== 'reviewing') {
-    actions.appendChild(adminActionButton(
-      'Start review',
-      () => updateReportStatus(report, 'reviewing')
-    ));
+  const actions=document.createElement('div'); actions.className='admin-report-actions';
+  if (report.status !== 'reviewing') actions.appendChild(adminActionButton('Start review',()=>updateReportStatus(report,'reviewing')));
+  if (report.status !== 'resolved') actions.appendChild(adminActionButton('Resolve',()=>updateReportStatus(report,'resolved'),'primary-lite'));
+  if (report.status !== 'dismissed') actions.appendChild(adminActionButton('Dismiss',()=>updateReportStatus(report,'dismissed')));
+  if (report.kind === 'post' && report.post) actions.appendChild(adminActionButton('Delete post',()=>adminDeleteReportedPost(report),'danger'));
+  if ((report.kind === 'member' || report.kind === 'conversation') && report.reportedMember) {
+    actions.appendChild(adminActionButton('Open profile',()=>openMemberProfile(report.reportedMember.id,{returnMode:'admin'})));
   }
-  if (report.status !== 'resolved') {
-    actions.appendChild(adminActionButton(
-      'Resolve',
-      () => updateReportStatus(report, 'resolved'),
-      'primary-lite'
-    ));
-  }
-  if (report.status !== 'dismissed') {
-    actions.appendChild(adminActionButton(
-      'Dismiss',
-      () => updateReportStatus(report, 'dismissed')
-    ));
-  }
-  if (report.kind === 'post' && report.post) {
-    actions.appendChild(adminActionButton(
-      'Delete post',
-      () => adminDeleteReportedPost(report),
-      'danger'
-    ));
-  }
-  if (report.kind === 'member' && report.reportedMember) {
-    actions.appendChild(adminActionButton(
-      'Open profile',
-      () => openMemberProfile(report.reportedMember.id, { returnMode: 'admin' })
-    ));
-  }
-
   card.appendChild(actions);
   return card;
 }
 
 function adminActionButton(label, action, variant = '') {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = `admin-action-button ${variant}`.trim();
-  button.textContent = label;
-  button.addEventListener('click', action);
-  return button;
+  const button=document.createElement('button'); button.type='button'; button.className=`admin-action-button ${variant}`.trim(); button.textContent=label; button.addEventListener('click',action); return button;
 }
 
 async function updateReportStatus(report, status) {
-  const table = report.kind === 'member' ? 'kt_member_reports' : 'kt_reports';
-
+  const table = report.kind === 'conversation' ? 'kt_conversation_reports' : report.kind === 'member' ? 'kt_member_reports' : 'kt_reports';
   try {
-    const { error } = await supabase
-      .from(table)
-      .update({ status })
-      .eq('id', report.id);
-
+    const { error } = await supabase.from(table).update({ status }).eq('id', report.id);
     if (error) throw error;
-
     showToast(`Report marked ${status}.`);
     await loadAdminReports();
-  } catch (error) {
-    showToast(error.message || 'Unable to update the report.');
-  }
+  } catch (error) { showToast(error.message || 'Unable to update the report.'); }
 }
 
 async function adminDeleteReportedPost(report) {
   if (!report.post || !confirm('Delete this reported post? This cannot be undone.')) return;
-
   try {
     const { error } = await supabase.from('kt_posts').delete().eq('id', report.post.id);
     if (error) throw error;
-
     if (report.post.image_url) {
-      const path = storagePathFromPublicUrl(report.post.image_url, 'kt-post-images');
+      const path=storagePathFromPublicUrl(report.post.image_url,'kt-post-images');
       if (path) await supabase.storage.from('kt-post-images').remove([path]);
     }
-
     showToast('Reported post deleted.');
-    await Promise.all([loadAdminReports(), loadFeed()]);
-  } catch (error) {
-    showToast(error.message || 'Unable to delete the reported post.');
-  }
+    await Promise.all([loadAdminReports(),loadFeed()]);
+  } catch (error) { showToast(error.message || 'Unable to delete the reported post.'); }
 }
 
 

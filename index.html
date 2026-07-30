@@ -22,6 +22,10 @@
     </a>
 
     <nav id="topActions" class="top-actions hidden">
+      <button id="messageTopButton" class="message-top-button" type="button" aria-label="Open messages" title="Messages">
+        <span aria-hidden="true">✉</span>
+        <strong id="messageTopBadge" class="message-badge hidden">0</strong>
+      </button>
       <button id="notificationBell" class="notification-bell" type="button" aria-label="Open notifications" title="Notifications">
         <span aria-hidden="true">🔔</span>
         <strong id="notificationBellBadge" class="notification-badge hidden">0</strong>
@@ -99,6 +103,10 @@
         <nav class="side-nav" aria-label="Main navigation">
           <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
           <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
+          <button id="messagesNav" class="nav-item message-nav-item" data-feed="messages" type="button">
+            <span>✉</span> Messages
+            <strong id="messageNavBadge" class="nav-message-badge hidden">0</strong>
+          </button>
           <button id="notificationsNav" class="nav-item notification-nav-item" data-feed="notifications" type="button">
             <span>♢</span> Notifications
             <strong id="notificationNavBadge" class="nav-notification-badge hidden">0</strong>
@@ -140,6 +148,62 @@
           <button id="emptyCreatePost" class="button primary" type="button">Create the first post</button>
         </div>
         <div id="feed" class="feed"></div>
+
+        <section id="messagesView" class="messages-view hidden" aria-labelledby="messagesTitle">
+          <div class="messages-page-header">
+            <div>
+              <span class="mini-badge">PRIVATE CONVERSATIONS</span>
+              <h2 id="messagesTitle">Messages</h2>
+              <p id="messagesSummary">Your one-to-one conversations.</p>
+            </div>
+            <button id="messagesRefreshButton" class="icon-button" type="button" title="Refresh messages" aria-label="Refresh messages">↻</button>
+          </div>
+
+          <div id="messagesLoading" class="loading-card card hidden">Loading conversations…</div>
+          <div id="messagesEmpty" class="empty-card card hidden">
+            <div class="empty-icon">✉</div>
+            <h3>No conversations yet</h3>
+            <p>Open a member profile and tap Message to start a private conversation.</p>
+            <button id="findMembersForMessages" class="button primary" type="button">Find members</button>
+          </div>
+          <div id="conversationsList" class="conversations-list"></div>
+        </section>
+
+        <section id="chatView" class="chat-view hidden" aria-labelledby="chatMemberName">
+          <div class="chat-page-header card">
+            <button id="chatBackButton" class="chat-back-button" type="button" aria-label="Back to messages">←</button>
+            <button id="chatMemberButton" class="chat-member-button" type="button" aria-label="Open member profile">
+              <span id="chatMemberAvatar" class="avatar chat-member-avatar">KT</span>
+              <span>
+                <strong id="chatMemberName">Khmer Together Member</strong>
+                <small id="chatMemberUsername">@member</small>
+              </span>
+            </button>
+            <div class="chat-header-actions">
+              <button id="chatReportButton" class="chat-header-button" type="button">Report</button>
+              <button id="chatBlockButton" class="chat-header-button danger" type="button">Block</button>
+            </div>
+          </div>
+
+          <div id="chatPrivacyNote" class="chat-privacy-note">Only you and this member can read these messages.</div>
+          <div id="chatBlockedNotice" class="chat-blocked-notice card hidden">
+            Messaging is unavailable because one of you has blocked the other. You can still read the conversation history.
+          </div>
+          <div id="chatLoading" class="loading-card card hidden">Loading messages…</div>
+          <div id="chatEmpty" class="chat-empty card hidden">
+            <span>👋</span>
+            <h3>Start the conversation</h3>
+            <p>Send a friendly private message.</p>
+          </div>
+          <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+
+          <form id="chatComposer" class="chat-composer card">
+            <label class="sr-only" for="chatMessageInput">Message</label>
+            <textarea id="chatMessageInput" maxlength="2000" rows="1" placeholder="Write a private message…" required></textarea>
+            <button id="sendMessageButton" class="button primary" type="submit">Send</button>
+          </form>
+          <p id="chatMessageStatus" class="form-message" role="status"></p>
+        </section>
 
         <section id="notificationsView" class="notifications-view hidden" aria-labelledby="notificationsTitle">
           <div class="notifications-page-header">
@@ -426,6 +490,39 @@
 
       <p id="reportMessage" class="form-message" role="status"></p>
       <button id="submitReportButton" class="button primary full" type="submit">Submit report</button>
+    </form>
+  </dialog>
+
+  <dialog id="conversationReportDialog" class="modal">
+    <form id="conversationReportForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Report conversation</h2>
+          <p>Your reason and details will be reviewed. Private message contents are not automatically shared.</p>
+        </div>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div id="reportedConversationMember" class="reported-member-preview"></div>
+
+      <label>
+        Reason
+        <select id="conversationReportReason" required>
+          <option value="">Select a reason</option>
+          <option value="spam_scam">Spam or scam messages</option>
+          <option value="harassment">Harassment or bullying</option>
+          <option value="unsafe_message">Threatening or unsafe messages</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+
+      <label>
+        Details
+        <textarea id="conversationReportDetails" maxlength="500" required placeholder="Explain what happened. Do not include private information you do not want reviewed."></textarea>
+      </label>
+
+      <p id="conversationReportMessage" class="form-message" role="status"></p>
+      <button id="submitConversationReportButton" class="button primary full" type="submit">Submit conversation report</button>
     </form>
   </dialog>
 
