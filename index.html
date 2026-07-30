@@ -82,19 +82,20 @@
 
     <section id="appView" class="app-shell hidden">
       <aside class="sidebar card">
-        <div class="profile-summary">
+        <button id="myProfileSummary" class="profile-summary profile-summary-button" type="button" aria-label="Open your public profile">
           <div id="myAvatar" class="avatar large">KT</div>
           <div>
             <strong id="myName">Khmer Together Member</strong>
             <span id="myUsername">@member</span>
           </div>
-        </div>
+        </button>
 
         <button id="editProfileButton" class="button ghost full" type="button">Edit profile</button>
 
         <nav class="side-nav" aria-label="Main navigation">
           <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
           <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
+          <button id="membersNav" class="nav-item" data-feed="members" type="button"><span>⌕</span> Find members</button>
           <button id="blockedUsersNav" class="nav-item" data-feed="blocked" type="button"><span>⊘</span> Blocked users</button>
           <button id="adminReportsNav" class="nav-item admin-nav hidden" data-feed="admin" type="button"><span>⚑</span> Admin reports</button>
         </nav>
@@ -132,11 +133,80 @@
         </div>
         <div id="feed" class="feed"></div>
 
+        <section id="membersView" class="members-view hidden" aria-labelledby="membersTitle">
+          <div class="members-page-header">
+            <div>
+              <span class="mini-badge">DISCOVER COMMUNITY</span>
+              <h2 id="membersTitle">Find members</h2>
+              <p>Search Khmer Together by display name or username.</p>
+            </div>
+            <button id="membersRefreshButton" class="icon-button" type="button" title="Refresh members" aria-label="Refresh members">↻</button>
+          </div>
+
+          <label class="member-search-box" for="memberSearchInput">
+            <span aria-hidden="true">⌕</span>
+            <input id="memberSearchInput" type="search" maxlength="80" autocomplete="off" placeholder="Search name or @username">
+            <button id="memberSearchClearButton" class="member-search-clear hidden" type="button" aria-label="Clear member search">×</button>
+          </label>
+
+          <p id="memberSearchSummary" class="member-search-summary">Loading members…</p>
+          <div id="membersLoading" class="loading-card card hidden">Loading members…</div>
+          <div id="membersEmpty" class="empty-card card hidden">
+            <div class="empty-icon">⌕</div>
+            <h3>No members found</h3>
+            <p>Try a different name or username.</p>
+          </div>
+          <div id="membersList" class="members-list"></div>
+        </section>
+
+        <section id="memberProfileView" class="member-profile-view hidden" aria-labelledby="memberProfileName">
+          <button id="memberProfileBackButton" class="profile-back-button" type="button">← Back</button>
+
+          <div id="memberProfileLoading" class="loading-card card hidden">Loading member profile…</div>
+          <div id="memberProfileError" class="empty-card card hidden">
+            <div class="empty-icon">!</div>
+            <h3>Profile unavailable</h3>
+            <p id="memberProfileErrorText">This member may no longer be available.</p>
+          </div>
+
+          <article id="memberProfileCard" class="card member-profile-card hidden">
+            <div id="memberProfileAvatar" class="avatar member-profile-avatar">KT</div>
+            <div class="member-profile-identity">
+              <span id="memberProfileYouBadge" class="mini-badge hidden">YOUR PROFILE</span>
+              <h2 id="memberProfileName">Khmer Together Member</h2>
+              <p id="memberProfileUsername">@member</p>
+              <p id="memberProfileBio" class="member-profile-bio">No bio yet.</p>
+            </div>
+
+            <div id="memberProfileActions" class="member-profile-actions"></div>
+
+            <div class="member-profile-stats" aria-label="Profile statistics">
+              <div><strong id="memberProfilePostCount">0</strong><span>Posts</span></div>
+              <div><strong id="memberProfileFollowerCount">0</strong><span>Followers</span></div>
+              <div><strong id="memberProfileFollowingCount">0</strong><span>Following</span></div>
+            </div>
+          </article>
+
+          <div id="memberPostsHeading" class="member-posts-heading hidden">
+            <div>
+              <h3>Posts</h3>
+              <p id="memberPostsSummary">Recent posts from this member.</p>
+            </div>
+          </div>
+
+          <div id="memberPostsEmpty" class="empty-card card hidden">
+            <div class="empty-icon">✦</div>
+            <h3>No posts yet</h3>
+            <p>This member has not shared anything yet.</p>
+          </div>
+          <div id="memberPostsList" class="feed member-posts-list"></div>
+        </section>
+
         <section id="adminReportsView" class="admin-reports-view hidden" aria-labelledby="adminReportsTitle">
           <div class="admin-page-header">
             <div>
               <span class="mini-badge">PRIVATE ADMIN</span>
-              <h2 id="adminReportsTitle">Reported posts</h2>
+              <h2 id="adminReportsTitle">Community reports</h2>
               <p id="adminSummary">Loading reports…</p>
             </div>
             <button id="adminRefreshButton" class="icon-button" type="button" title="Refresh reports" aria-label="Refresh reports">↻</button>
@@ -321,6 +391,40 @@
 
       <p id="reportMessage" class="form-message" role="status"></p>
       <button id="submitReportButton" class="button primary full" type="submit">Submit report</button>
+    </form>
+  </dialog>
+
+  <dialog id="memberReportDialog" class="modal">
+    <form id="memberReportForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Report member</h2>
+          <p>Your report is private and will be reviewed by the administrator.</p>
+        </div>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div id="reportedMemberPreview" class="reported-member-preview"></div>
+
+      <label>
+        Reason
+        <select id="memberReportReason" required>
+          <option value="">Select a reason</option>
+          <option value="impersonation">Fake account or impersonation</option>
+          <option value="spam_scam">Spam or scam</option>
+          <option value="harassment">Harassment or bullying</option>
+          <option value="unsafe_account">Unsafe or suspicious account</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+
+      <label>
+        Details (optional)
+        <textarea id="memberReportDetails" maxlength="500" placeholder="Explain why this member should be reviewed."></textarea>
+      </label>
+
+      <p id="memberReportMessage" class="form-message" role="status"></p>
+      <button id="submitMemberReportButton" class="button primary full" type="submit">Submit member report</button>
     </form>
   </dialog>
 

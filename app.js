@@ -12,11 +12,18 @@ let selectedImage = null;
 let selectedProfileImage = null;
 let removeProfileImageRequested = false;
 let reportingPostId = null;
+let reportingMemberId = null;
+let reportingMemberProfile = null;
 let isAdmin = false;
 let adminReports = [];
 let blockedUsers = [];
+let activeMemberProfile = null;
+let activeMemberPosts = [];
+let activeMemberStats = { posts: 0, followers: 0, following: 0 };
+let memberProfileReturnMode = 'members';
+let memberSearchTerm = '';
 const recentCommentSubmissions = new Map();
-let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [] };
+let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [], blocks: [] };
 
 const els = {
   toast: $('#toast'), authView: $('#authView'), appView: $('#appView'),
@@ -52,7 +59,28 @@ const els = {
   blockedUsersNav: $('#blockedUsersNav'), blockedUsersView: $('#blockedUsersView'),
   blockedUsersList: $('#blockedUsersList'), blockedUsersLoading: $('#blockedUsersLoading'),
   blockedUsersEmpty: $('#blockedUsersEmpty'), blockedUsersSummary: $('#blockedUsersSummary'),
-  blockedUsersRefreshButton: $('#blockedUsersRefreshButton')
+  blockedUsersRefreshButton: $('#blockedUsersRefreshButton'),
+  membersNav: $('#membersNav'), membersView: $('#membersView'), membersList: $('#membersList'),
+  membersLoading: $('#membersLoading'), membersEmpty: $('#membersEmpty'),
+  membersRefreshButton: $('#membersRefreshButton'), memberSearchInput: $('#memberSearchInput'),
+  memberSearchClear: $('#memberSearchClearButton'), memberSearchSummary: $('#memberSearchSummary'),
+  memberProfileView: $('#memberProfileView'), memberProfileBack: $('#memberProfileBackButton'),
+  memberProfileLoading: $('#memberProfileLoading'), memberProfileError: $('#memberProfileError'),
+  memberProfileErrorText: $('#memberProfileErrorText'), memberProfileCard: $('#memberProfileCard'),
+  memberProfileAvatar: $('#memberProfileAvatar'), memberProfileName: $('#memberProfileName'),
+  memberProfileUsername: $('#memberProfileUsername'), memberProfileBio: $('#memberProfileBio'),
+  memberProfileActions: $('#memberProfileActions'), memberProfileYouBadge: $('#memberProfileYouBadge'),
+  memberProfilePostCount: $('#memberProfilePostCount'),
+  memberProfileFollowerCount: $('#memberProfileFollowerCount'),
+  memberProfileFollowingCount: $('#memberProfileFollowingCount'),
+  memberPostsHeading: $('#memberPostsHeading'), memberPostsSummary: $('#memberPostsSummary'),
+  memberPostsEmpty: $('#memberPostsEmpty'), memberPostsList: $('#memberPostsList'),
+  memberReportDialog: $('#memberReportDialog'), memberReportForm: $('#memberReportForm'),
+  memberReportReason: $('#memberReportReason'), memberReportDetails: $('#memberReportDetails'),
+  memberReportMessage: $('#memberReportMessage'),
+  submitMemberReport: $('#submitMemberReportButton'),
+  reportedMemberPreview: $('#reportedMemberPreview'),
+  myProfileSummary: $('#myProfileSummary')
 };
 
 function initials(name = 'KT') {
@@ -66,6 +94,65 @@ function setAvatar(element, profile = {}) {
   element.textContent = url ? '' : initials(name);
   element.style.backgroundImage = url ? `url(${JSON.stringify(url)})` : '';
   element.classList.toggle('has-image', Boolean(url));
+}
+
+function makeProfileTrigger(element, userId) {
+  if (!element || !userId) return;
+  element.classList.add('profile-trigger');
+  element.setAttribute('role', 'button');
+  element.setAttribute('tabindex', '0');
+
+  const open = event => {
+    event?.stopPropagation();
+    openMemberProfile(userId);
+  };
+
+  element.addEventListener('click', open);
+  element.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      open(event);
+    }
+  });
+}
+
+function profilePath(username = '') {
+  return `/u/${encodeURIComponent(username)}`;
+}
+
+async function handleLocationRoute() {
+  if (!currentUser) return;
+  const match = location.pathname.match(/^\/u\/([^/]+)\/?$/i);
+
+  if (!match) {
+    if (feedMode === 'profile') switchView('all', false, false);
+    return;
+  }
+
+  const username = decodeURIComponent(match[1]).toLowerCase();
+  let profile = [...feedState.profiles.values()]
+    .find(item => String(item.username || '').toLowerCase() === username);
+
+  if (!profile) {
+    const { data, error } = await supabase
+      .from('kt_profiles')
+      .select('*')
+      .ilike('username', username)
+      .maybeSingle();
+
+    if (error || !data) {
+      switchView('profile', false, false);
+      showMemberProfileError('This profile is unavailable or the member has blocked access.');
+      return;
+    }
+    profile = data;
+    feedState.profiles.set(profile.id, profile);
+  }
+
+  await openMemberProfile(profile.id, {
+    pushHistory: false,
+    returnMode: 'all'
+  });
 }
 
 function storagePathFromPublicUrl(url, bucket) {
@@ -155,6 +242,26 @@ function bindEvents() {
   els.adminStatusFilter.addEventListener('change', renderAdminReports);
   els.adminRefreshButton.addEventListener('click', loadAdminReports);
   els.blockedUsersRefreshButton.addEventListener('click', loadBlockedUsers);
+  els.membersRefreshButton.addEventListener('click', loadFeed);
+  els.memberSearchInput.addEventListener('input', () => {
+    memberSearchTerm = els.memberSearchInput.value.trim();
+    els.memberSearchClear.classList.toggle('hidden', !memberSearchTerm);
+    renderMemberDirectory();
+  });
+  els.memberSearchClear.addEventListener('click', () => {
+    memberSearchTerm = '';
+    els.memberSearchInput.value = '';
+    els.memberSearchClear.classList.add('hidden');
+    renderMemberDirectory();
+    els.memberSearchInput.focus();
+  });
+  els.memberProfileBack.addEventListener('click', () => {
+    history.pushState({}, '', '/');
+    switchView(memberProfileReturnMode, true, false);
+  });
+  els.memberReportForm.addEventListener('submit', submitMemberReport);
+  els.myProfileSummary.addEventListener('click', () => openMemberProfile(currentUser.id));
+  window.addEventListener('popstate', handleLocationRoute);
   $$('.close-button').forEach(button => {
     button.addEventListener('click', () => button.closest('dialog')?.close());
   });
@@ -165,7 +272,10 @@ function bindEvents() {
   });
 
   $$('[data-feed]').forEach(button => {
-    button.addEventListener('click', () => switchView(button.dataset.feed));
+    button.addEventListener('click', () => {
+      if (location.pathname.startsWith('/u/')) history.pushState({}, '', '/');
+      switchView(button.dataset.feed);
+    });
   });
 }
 
@@ -176,20 +286,25 @@ async function handleSession(session) {
     isAdmin = false;
     adminReports = [];
     blockedUsers = [];
+    activeMemberProfile = null;
+    activeMemberPosts = [];
     els.adminReportsNav.classList.add('hidden');
     els.authView.classList.remove('hidden');
     els.appView.classList.add('hidden');
     els.topActions.classList.add('hidden');
     return;
   }
+
   els.authView.classList.add('hidden');
   els.appView.classList.remove('hidden');
   els.topActions.classList.remove('hidden');
+
   await ensureProfile();
   await checkAdminAccess();
   updateMyProfileUI();
-  switchView('all', false);
+  switchView('all', false, false);
   await loadFeed();
+  await handleLocationRoute();
 }
 
 async function checkAdminAccess() {
@@ -204,21 +319,32 @@ async function checkAdminAccess() {
   els.adminReportsNav.classList.toggle('hidden', !isAdmin);
 }
 
-function switchView(mode, load = true) {
+function switchView(mode, load = true, updateHistory = true) {
   if (mode === 'admin' && !isAdmin) return;
 
   feedMode = mode;
-  $$('[data-feed]').forEach(item => item.classList.toggle('active', item.dataset.feed === mode));
+  $$('[data-feed]').forEach(item => {
+    const activeMode = mode === 'profile' ? 'members' : mode;
+    item.classList.toggle('active', item.dataset.feed === activeMode);
+  });
 
   const adminMode = mode === 'admin';
   const blockedMode = mode === 'blocked';
-  const specialMode = adminMode || blockedMode;
+  const membersMode = mode === 'members';
+  const profileMode = mode === 'profile';
+  const specialMode = adminMode || blockedMode || membersMode || profileMode;
 
   els.composerCard.classList.toggle('hidden', specialMode);
   els.feedHeading.classList.toggle('hidden', specialMode);
   els.feed.classList.toggle('hidden', specialMode);
   els.adminReportsView.classList.toggle('hidden', !adminMode);
   els.blockedUsersView.classList.toggle('hidden', !blockedMode);
+  els.membersView.classList.toggle('hidden', !membersMode);
+  els.memberProfileView.classList.toggle('hidden', !profileMode);
+
+  if (updateHistory && !profileMode && location.pathname.startsWith('/u/')) {
+    history.pushState({}, '', '/');
+  }
 
   if (adminMode) {
     els.loading.classList.add('hidden');
@@ -231,6 +357,20 @@ function switchView(mode, load = true) {
     els.loading.classList.add('hidden');
     els.empty.classList.add('hidden');
     if (load) loadBlockedUsers();
+    return;
+  }
+
+  if (membersMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
+    renderMemberDirectory();
+    if (load && !feedState.profiles.size) loadFeed();
+    return;
+  }
+
+  if (profileMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
     return;
   }
 
@@ -462,16 +602,39 @@ async function loadFeed() {
   if (!currentUser) return;
   els.loading.classList.remove('hidden');
   els.empty.classList.add('hidden');
-  els.feed.innerHTML = '';
+
+  if (feedMode === 'all' || feedMode === 'following') {
+    els.feed.innerHTML = '';
+  }
+
   try {
-    const [postsResult, commentsResult, likesResult, followsResult, profilesResult] = await Promise.all([
-      supabase.from('kt_posts').select('*').order('created_at',{ascending:false}).limit(60),
-      supabase.from('kt_comments').select('*').order('created_at',{ascending:true}).limit(500),
-      supabase.from('kt_likes').select('*').limit(2000),
-      supabase.from('kt_follows').select('*').limit(2000),
-      supabase.from('kt_profiles').select('*').limit(1000)
+    const [
+      postsResult,
+      commentsResult,
+      likesResult,
+      followsResult,
+      profilesResult,
+      blocksResult
+    ] = await Promise.all([
+      supabase.from('kt_posts').select('*').order('created_at',{ascending:false}).limit(100),
+      supabase.from('kt_comments').select('*').order('created_at',{ascending:true}).limit(1000),
+      supabase.from('kt_likes').select('*').limit(4000),
+      supabase.from('kt_follows').select('*').limit(4000),
+      supabase.from('kt_profiles').select('*').limit(2000),
+      supabase.from('kt_blocks')
+        .select('blocked_id,created_at')
+        .eq('blocker_id', currentUser.id)
+        .limit(2000)
     ]);
-    for (const result of [postsResult, commentsResult, likesResult, followsResult, profilesResult]) {
+
+    for (const result of [
+      postsResult,
+      commentsResult,
+      likesResult,
+      followsResult,
+      profilesResult,
+      blocksResult
+    ]) {
       if (result.error) throw result.error;
     }
 
@@ -480,18 +643,25 @@ async function loadFeed() {
       comments: commentsResult.data || [],
       likes: likesResult.data || [],
       follows: followsResult.data || [],
-      profiles: new Map((profilesResult.data || []).map(profile => [profile.id, profile]))
+      profiles: new Map((profilesResult.data || []).map(profile => [profile.id, profile])),
+      blocks: blocksResult.data || []
     };
+
     renderFeed();
+    if (feedMode === 'members') renderMemberDirectory();
   } catch (error) {
-    els.feed.innerHTML = `<section class="card loading-card">Unable to load the feed: ${String(error.message || error)}</section>`;
+    if (feedMode === 'all' || feedMode === 'following') {
+      els.feed.innerHTML = `<section class="card loading-card">Unable to load the feed: ${String(error.message || error)}</section>`;
+    } else {
+      showToast(error.message || 'Unable to refresh community information.');
+    }
   } finally {
     els.loading.classList.add('hidden');
   }
 }
 
 function renderFeed() {
-  if (feedMode === 'admin' || feedMode === 'blocked') return;
+  if (['admin','blocked','members','profile'].includes(feedMode)) return;
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
@@ -523,6 +693,7 @@ function renderPost(post, followingIds) {
   setAvatar($('.post-avatar',node), profile);
   $('.post-name',node).textContent = profile.full_name;
   $('.post-username',node).textContent = `@${profile.username}`;
+  makeProfileTrigger($('.post-author',node), post.user_id);
 
   const timeElement = $('.post-time',node);
   timeElement.textContent = timeAgo(post.created_at);
@@ -969,6 +1140,9 @@ function renderComment(comment) {
   body.textContent = comment.body;
 
   bubble.append(strong, body);
+  makeProfileTrigger(avatar, comment.user_id);
+  makeProfileTrigger(strong, comment.user_id);
+  strong.addEventListener('click', event => event.stopPropagation());
 
   const createdAt = new Date(comment.created_at || 0).getTime();
   const updatedAt = new Date(comment.updated_at || comment.created_at || 0).getTime();
@@ -1167,16 +1341,21 @@ async function toggleLike(postId,liked) {
   } catch (error) { showToast(error.message || 'Unable to update like.'); }
 }
 
-async function toggleFollow(userId,following) {
+async function toggleFollow(userId, following) {
   try {
     const query = following
       ? supabase.from('kt_follows').delete().eq('follower_id',currentUser.id).eq('following_id',userId)
       : supabase.from('kt_follows').insert({follower_id:currentUser.id,following_id:userId});
-    const {error} = await query;
+    const { error } = await query;
     if (error) throw error;
+
     showToast(following ? 'Unfollowed.' : 'You are now following this member.');
     await loadFeed();
-  } catch (error) { showToast(error.message || 'Unable to update follow.'); }
+    return true;
+  } catch (error) {
+    showToast(error.message || 'Unable to update follow.');
+    return false;
+  }
 }
 
 async function createComment(postId, input, form) {
@@ -1236,8 +1415,443 @@ async function deletePost(post) {
 }
 
 
+
+function currentFollowingIds() {
+  return new Set(
+    feedState.follows
+      .filter(follow => follow.follower_id === currentUser.id)
+      .map(follow => follow.following_id)
+  );
+}
+
+function currentBlockedIds() {
+  return new Set((feedState.blocks || []).map(block => block.blocked_id));
+}
+
+function renderMemberDirectory() {
+  if (!currentUser) return;
+
+  const followingIds = currentFollowingIds();
+  const blockedIds = currentBlockedIds();
+  const query = memberSearchTerm.toLocaleLowerCase();
+
+  const allProfiles = [...feedState.profiles.values()]
+    .filter(profile => !blockedIds.has(profile.id))
+    .filter(profile => {
+      if (!query) return true;
+      return String(profile.full_name || '').toLocaleLowerCase().includes(query)
+        || String(profile.username || '').toLocaleLowerCase().includes(query.replace(/^@/, ''));
+    })
+    .sort((a, b) => {
+      if (a.id === currentUser.id) return -1;
+      if (b.id === currentUser.id) return 1;
+      return String(a.full_name || '').localeCompare(String(b.full_name || ''));
+    });
+
+  els.membersList.innerHTML = '';
+  els.membersEmpty.classList.toggle('hidden', allProfiles.length > 0);
+
+  const totalVisible = [...feedState.profiles.values()]
+    .filter(profile => !blockedIds.has(profile.id)).length;
+
+  els.memberSearchSummary.textContent = memberSearchTerm
+    ? `${allProfiles.length} ${allProfiles.length === 1 ? 'member' : 'members'} found`
+    : `${totalVisible} community ${totalVisible === 1 ? 'member' : 'members'}`;
+
+  for (const profile of allProfiles.slice(0, 100)) {
+    els.membersList.appendChild(renderMemberCard(profile, followingIds));
+  }
+}
+
+function renderMemberCard(profile, followingIds) {
+  const card = document.createElement('article');
+  card.className = 'card member-card';
+
+  const identity = document.createElement('div');
+  identity.className = 'member-card-identity';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar member-card-avatar';
+  setAvatar(avatar, profile);
+
+  const text = document.createElement('div');
+  text.className = 'member-card-text';
+
+  const name = document.createElement('strong');
+  name.textContent = profile.full_name || 'Khmer Together Member';
+
+  const username = document.createElement('span');
+  username.textContent = `@${profile.username || 'member'}`;
+
+  const bio = document.createElement('p');
+  bio.textContent = profile.bio || (profile.id === currentUser.id
+    ? 'This is your profile.'
+    : 'No bio yet.');
+
+  text.append(name, username, bio);
+  identity.append(avatar, text);
+  makeProfileTrigger(identity, profile.id);
+
+  const actions = document.createElement('div');
+  actions.className = 'member-card-actions';
+
+  if (profile.id === currentUser.id) {
+    const you = document.createElement('span');
+    you.className = 'mini-badge';
+    you.textContent = 'YOU';
+    actions.appendChild(you);
+  } else {
+    const following = followingIds.has(profile.id);
+    const follow = document.createElement('button');
+    follow.type = 'button';
+    follow.className = `button small ${following ? 'ghost' : 'primary'}`;
+    follow.textContent = following ? 'Following' : 'Follow';
+    follow.addEventListener('click', async event => {
+      event.stopPropagation();
+      follow.disabled = true;
+      const success = await toggleFollow(profile.id, following);
+      if (!success) follow.disabled = false;
+      renderMemberDirectory();
+    });
+    actions.appendChild(follow);
+  }
+
+  card.append(identity, actions);
+  return card;
+}
+
+function showMemberProfileError(message) {
+  els.memberProfileLoading.classList.add('hidden');
+  els.memberProfileCard.classList.add('hidden');
+  els.memberPostsHeading.classList.add('hidden');
+  els.memberPostsEmpty.classList.add('hidden');
+  els.memberPostsList.innerHTML = '';
+  els.memberProfileErrorText.textContent = message;
+  els.memberProfileError.classList.remove('hidden');
+}
+
+async function openMemberProfile(userId, options = {}) {
+  if (!userId || !currentUser) return;
+
+  const {
+    pushHistory = true,
+    returnMode = ['all','following','members'].includes(feedMode)
+      ? feedMode
+      : memberProfileReturnMode
+  } = options;
+
+  memberProfileReturnMode = returnMode || 'members';
+  activeMemberProfile = null;
+  activeMemberPosts = [];
+
+  switchView('profile', false, false);
+  els.memberProfileLoading.classList.remove('hidden');
+  els.memberProfileError.classList.add('hidden');
+  els.memberProfileCard.classList.add('hidden');
+  els.memberPostsHeading.classList.add('hidden');
+  els.memberPostsEmpty.classList.add('hidden');
+  els.memberPostsList.innerHTML = '';
+
+  try {
+    const [
+      profileResult,
+      postsResult,
+      postCountResult,
+      followerCountResult,
+      followingCountResult,
+      followStatusResult,
+      blockStatusResult
+    ] = await Promise.all([
+      supabase.from('kt_profiles').select('*').eq('id', userId).maybeSingle(),
+      supabase.from('kt_posts')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase.from('kt_posts')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId),
+      supabase.from('kt_follows')
+        .select('follower_id', { count: 'exact', head: true })
+        .eq('following_id', userId),
+      supabase.from('kt_follows')
+        .select('following_id', { count: 'exact', head: true })
+        .eq('follower_id', userId),
+      userId === currentUser.id
+        ? Promise.resolve({ data: null, error: null })
+        : supabase.from('kt_follows')
+            .select('following_id')
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', userId)
+            .maybeSingle(),
+      userId === currentUser.id
+        ? Promise.resolve({ data: null, error: null })
+        : supabase.from('kt_blocks')
+            .select('blocked_id')
+            .eq('blocker_id', currentUser.id)
+            .eq('blocked_id', userId)
+            .maybeSingle()
+    ]);
+
+    for (const result of [
+      profileResult,
+      postsResult,
+      postCountResult,
+      followerCountResult,
+      followingCountResult,
+      followStatusResult,
+      blockStatusResult
+    ]) {
+      if (result.error) throw result.error;
+    }
+
+    if (!profileResult.data) {
+      showMemberProfileError('This profile is unavailable or the member has blocked access.');
+      return;
+    }
+
+    const profilePosts = postsResult.data || [];
+    const postIds = profilePosts.map(post => post.id);
+
+    let comments = [];
+    let likes = [];
+
+    if (postIds.length) {
+      const [commentsResult, likesResult] = await Promise.all([
+        supabase.from('kt_comments')
+          .select('*')
+          .in('post_id', postIds)
+          .order('created_at', { ascending: true }),
+        supabase.from('kt_likes')
+          .select('*')
+          .in('post_id', postIds)
+      ]);
+
+      if (commentsResult.error) throw commentsResult.error;
+      if (likesResult.error) throw likesResult.error;
+      comments = commentsResult.data || [];
+      likes = likesResult.data || [];
+    }
+
+    activeMemberProfile = profileResult.data;
+    activeMemberPosts = profilePosts;
+    activeMemberStats = {
+      posts: postCountResult.count || 0,
+      followers: followerCountResult.count || 0,
+      following: followingCountResult.count || 0,
+      followingMember: Boolean(followStatusResult.data),
+      blockedByMe: Boolean(blockStatusResult.data)
+    };
+
+    feedState.profiles.set(activeMemberProfile.id, activeMemberProfile);
+
+    const profilePostIds = new Set(profilePosts.map(post => post.id));
+    feedState.posts = [
+      ...profilePosts,
+      ...feedState.posts.filter(post => !profilePostIds.has(post.id))
+    ];
+    feedState.comments = [
+      ...comments,
+      ...feedState.comments.filter(comment => !profilePostIds.has(comment.post_id))
+    ];
+    feedState.likes = [
+      ...likes,
+      ...feedState.likes.filter(like => !profilePostIds.has(like.post_id))
+    ];
+
+    if (activeMemberStats.followingMember) {
+      const exists = feedState.follows.some(follow =>
+        follow.follower_id === currentUser.id
+        && follow.following_id === userId
+      );
+      if (!exists) {
+        feedState.follows.push({
+          follower_id: currentUser.id,
+          following_id: userId
+        });
+      }
+    }
+
+    if (pushHistory) {
+      history.pushState(
+        { memberId: userId },
+        '',
+        profilePath(activeMemberProfile.username)
+      );
+    }
+
+    renderMemberProfile();
+  } catch (error) {
+    showMemberProfileError(error.message || 'Unable to load this member profile.');
+  } finally {
+    els.memberProfileLoading.classList.add('hidden');
+  }
+}
+
+function renderMemberProfile() {
+  const profile = activeMemberProfile;
+  if (!profile) return;
+
+  const isMine = profile.id === currentUser.id;
+  const followingIds = currentFollowingIds();
+
+  els.memberProfileError.classList.add('hidden');
+  els.memberProfileCard.classList.remove('hidden');
+  els.memberPostsHeading.classList.remove('hidden');
+
+  setAvatar(els.memberProfileAvatar, profile);
+  els.memberProfileName.textContent = profile.full_name || 'Khmer Together Member';
+  els.memberProfileUsername.textContent = `@${profile.username || 'member'}`;
+  els.memberProfileBio.textContent = profile.bio || (isMine
+    ? 'Add a bio so community members can know you better.'
+    : 'No bio yet.');
+  els.memberProfileYouBadge.classList.toggle('hidden', !isMine);
+
+  els.memberProfilePostCount.textContent = String(activeMemberStats.posts || 0);
+  els.memberProfileFollowerCount.textContent = String(activeMemberStats.followers || 0);
+  els.memberProfileFollowingCount.textContent = String(activeMemberStats.following || 0);
+  els.memberPostsSummary.textContent = `${activeMemberStats.posts || 0} total ${activeMemberStats.posts === 1 ? 'post' : 'posts'}`;
+
+  els.memberProfileActions.innerHTML = '';
+
+  if (isMine) {
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'button primary';
+    edit.textContent = 'Edit profile';
+    edit.addEventListener('click', openProfile);
+    els.memberProfileActions.appendChild(edit);
+  } else if (activeMemberStats.blockedByMe) {
+    const unblock = document.createElement('button');
+    unblock.type = 'button';
+    unblock.className = 'button ghost';
+    unblock.textContent = 'Unblock member';
+    unblock.addEventListener('click', async () => {
+      await unblockUser(profile.id, profile);
+      activeMemberStats.blockedByMe = false;
+      await openMemberProfile(profile.id, {
+        pushHistory: false,
+        returnMode: memberProfileReturnMode
+      });
+    });
+    els.memberProfileActions.appendChild(unblock);
+  } else {
+    const follow = document.createElement('button');
+    follow.type = 'button';
+    follow.className = `button ${activeMemberStats.followingMember ? 'ghost' : 'primary'}`;
+    follow.textContent = activeMemberStats.followingMember ? 'Following' : 'Follow';
+    follow.addEventListener('click', async () => {
+      follow.disabled = true;
+      const success = await toggleFollow(profile.id, activeMemberStats.followingMember);
+      if (success) {
+        await openMemberProfile(profile.id, {
+          pushHistory: false,
+          returnMode: memberProfileReturnMode
+        });
+      } else {
+        follow.disabled = false;
+      }
+    });
+
+    const report = document.createElement('button');
+    report.type = 'button';
+    report.className = 'button ghost';
+    report.textContent = 'Report member';
+    report.addEventListener('click', () => openMemberReportDialog(profile));
+
+    const block = document.createElement('button');
+    block.type = 'button';
+    block.className = 'button ghost danger-outline';
+    block.textContent = 'Block member';
+    block.addEventListener('click', async () => {
+      const success = await blockUser(profile.id, profile);
+      if (success) {
+        history.pushState({}, '', '/');
+        switchView('members', true, false);
+      }
+    });
+
+    els.memberProfileActions.append(follow, report, block);
+  }
+
+  els.memberPostsList.innerHTML = '';
+  els.memberPostsEmpty.classList.toggle('hidden', activeMemberPosts.length > 0);
+
+  for (const post of activeMemberPosts) {
+    els.memberPostsList.appendChild(renderPost(post, followingIds));
+  }
+}
+
+function openMemberReportDialog(profile) {
+  if (!profile || profile.id === currentUser.id) return;
+
+  reportingMemberId = profile.id;
+  reportingMemberProfile = profile;
+  els.memberReportReason.value = '';
+  els.memberReportDetails.value = '';
+  setMessage(els.memberReportMessage);
+
+  els.reportedMemberPreview.innerHTML = '';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  setAvatar(avatar, profile);
+
+  const text = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = profile.full_name || 'Khmer Together Member';
+  const username = document.createElement('span');
+  username.textContent = `@${profile.username || 'member'}`;
+  text.append(name, username);
+
+  els.reportedMemberPreview.append(avatar, text);
+  els.memberReportDialog.showModal();
+}
+
+async function submitMemberReport(event) {
+  event.preventDefault();
+  if (!reportingMemberId) return;
+
+  const reason = els.memberReportReason.value;
+  const details = els.memberReportDetails.value.trim();
+
+  if (!reason) {
+    setMessage(els.memberReportMessage, 'Please select a reason.');
+    return;
+  }
+
+  els.submitMemberReport.disabled = true;
+  els.submitMemberReport.textContent = 'Submitting…';
+  setMessage(els.memberReportMessage);
+
+  try {
+    const { error } = await supabase.from('kt_member_reports').insert({
+      reported_id: reportingMemberId,
+      reporter_id: currentUser.id,
+      reason,
+      details
+    });
+
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error('You already reported this member.');
+      }
+      throw error;
+    }
+
+    els.memberReportDialog.close();
+    showToast('Member report submitted privately.');
+    reportingMemberId = null;
+    reportingMemberProfile = null;
+  } catch (error) {
+    setMessage(els.memberReportMessage, error.message || 'Unable to submit this report.');
+  } finally {
+    els.submitMemberReport.disabled = false;
+    els.submitMemberReport.textContent = 'Submit member report';
+  }
+}
+
 async function blockUser(userId, profile = {}) {
-  if (!userId || userId === currentUser.id) return;
+  if (!userId || userId === currentUser.id) return false;
 
   const name = profile.full_name || 'this member';
   const username = profile.username ? ` (@${profile.username})` : '';
@@ -1245,7 +1859,7 @@ async function blockUser(userId, profile = {}) {
     `Block ${name}${username}?\n\n` +
     'Their posts and comments will disappear from your feed. Neither of you will be able to follow, like, or comment on the other person’s posts.'
   );
-  if (!confirmed) return;
+  if (!confirmed) return false;
 
   try {
     const { error } = await supabase.from('kt_blocks').insert({
@@ -1261,8 +1875,10 @@ async function blockUser(userId, profile = {}) {
     showToast(`${name} was blocked.`);
     await loadFeed();
     if (feedMode === 'blocked') await loadBlockedUsers();
+    return true;
   } catch (error) {
     showToast(error.message || 'Unable to block this member.');
+    return false;
   }
 }
 
@@ -1428,6 +2044,8 @@ const REPORT_REASON_LABELS = {
   harassment: 'Harassment or bullying',
   hate: 'Hate or dangerous content',
   inappropriate: 'Inappropriate content',
+  impersonation: 'Fake account or impersonation',
+  unsafe_account: 'Unsafe or suspicious account',
   other: 'Other'
 };
 
@@ -1440,15 +2058,26 @@ async function loadAdminReports() {
   els.adminRefreshButton.disabled = true;
 
   try {
-    const { data: reports, error: reportsError } = await supabase
-      .from('kt_reports')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (reportsError) throw reportsError;
+    const [postReportsResult, memberReportsResult] = await Promise.all([
+      supabase.from('kt_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabase.from('kt_member_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200)
+    ]);
 
-    const postIds = [...new Set((reports || []).map(report => report.post_id).filter(Boolean))];
+    if (postReportsResult.error) throw postReportsResult.error;
+    if (memberReportsResult.error) throw memberReportsResult.error;
+
+    const postReports = postReportsResult.data || [];
+    const memberReports = memberReportsResult.data || [];
+
+    const postIds = [...new Set(postReports.map(report => report.post_id).filter(Boolean))];
     let posts = [];
+
     if (postIds.length) {
       const { data, error } = await supabase.from('kt_posts').select('*').in('id', postIds);
       if (error) throw error;
@@ -1456,9 +2085,12 @@ async function loadAdminReports() {
     }
 
     const userIds = [...new Set([
-      ...(reports || []).map(report => report.reporter_id),
+      ...postReports.map(report => report.reporter_id),
+      ...memberReports.map(report => report.reporter_id),
+      ...memberReports.map(report => report.reported_id),
       ...posts.map(post => post.user_id)
     ].filter(Boolean))];
+
     let profiles = [];
     if (userIds.length) {
       const { data, error } = await supabase.from('kt_profiles').select('*').in('id', userIds);
@@ -1469,15 +2101,26 @@ async function loadAdminReports() {
     const postMap = new Map(posts.map(post => [post.id, post]));
     const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
 
-    adminReports = (reports || []).map(report => {
+    const preparedPostReports = postReports.map(report => {
       const post = postMap.get(report.post_id) || null;
       return {
         ...report,
+        kind: 'post',
         post,
         reporter: profileMap.get(report.reporter_id) || null,
         author: post ? profileMap.get(post.user_id) || null : null
       };
     });
+
+    const preparedMemberReports = memberReports.map(report => ({
+      ...report,
+      kind: 'member',
+      reporter: profileMap.get(report.reporter_id) || null,
+      reportedMember: profileMap.get(report.reported_id) || null
+    }));
+
+    adminReports = [...preparedPostReports, ...preparedMemberReports]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     renderAdminReports();
   } catch (error) {
@@ -1502,7 +2145,11 @@ function renderAdminReports() {
 
   const openCount = adminReports.filter(report => report.status === 'open').length;
   const reviewingCount = adminReports.filter(report => report.status === 'reviewing').length;
-  els.adminSummary.textContent = `${openCount} open · ${reviewingCount} reviewing · ${adminReports.length} total`;
+  const memberCount = adminReports.filter(report => report.kind === 'member').length;
+
+  els.adminSummary.textContent =
+    `${openCount} open · ${reviewingCount} reviewing · ${memberCount} member reports · ${adminReports.length} total`;
+
   els.adminReportsList.innerHTML = '';
   els.adminReportsEmpty.classList.toggle('hidden', visible.length > 0);
 
@@ -1520,7 +2167,8 @@ function renderAdminReportCard(report) {
 
   const titleWrap = document.createElement('div');
   const reason = document.createElement('strong');
-  reason.textContent = REPORT_REASON_LABELS[report.reason] || report.reason;
+  reason.textContent = `${report.kind === 'member' ? 'Member report' : 'Post report'} · ${REPORT_REASON_LABELS[report.reason] || report.reason}`;
+
   const meta = document.createElement('span');
   meta.textContent = `${timeAgo(report.created_at)} · Reported by ${report.reporter?.full_name || 'Member'} (@${report.reporter?.username || 'member'})`;
   titleWrap.append(reason, meta);
@@ -1538,49 +2186,93 @@ function renderAdminReportCard(report) {
     card.appendChild(details);
   }
 
-  const postBox = document.createElement('section');
-  postBox.className = 'reported-post-preview';
-  const postLabel = document.createElement('small');
-  postLabel.textContent = report.author
-    ? `Reported post by ${report.author.full_name} (@${report.author.username})`
-    : 'Reported post';
-  postBox.appendChild(postLabel);
+  if (report.kind === 'post') {
+    const postBox = document.createElement('section');
+    postBox.className = 'reported-post-preview';
 
-  if (report.post) {
-    if (report.post.body) {
-      const postBody = document.createElement('p');
-      postBody.textContent = report.post.body;
-      postBox.appendChild(postBody);
+    const postLabel = document.createElement('small');
+    postLabel.textContent = report.author
+      ? `Reported post by ${report.author.full_name} (@${report.author.username})`
+      : 'Reported post';
+    postBox.appendChild(postLabel);
+
+    if (report.post) {
+      if (report.post.body) {
+        const postBody = document.createElement('p');
+        postBody.textContent = report.post.body;
+        postBox.appendChild(postBody);
+      }
+      if (report.post.image_url) {
+        const image = document.createElement('img');
+        image.src = report.post.image_url;
+        image.alt = 'Reported post image';
+        image.loading = 'lazy';
+        postBox.appendChild(image);
+      }
+    } else {
+      const missing = document.createElement('p');
+      missing.className = 'muted';
+      missing.textContent = 'This post is no longer available.';
+      postBox.appendChild(missing);
     }
-    if (report.post.image_url) {
-      const image = document.createElement('img');
-      image.src = report.post.image_url;
-      image.alt = 'Reported post image';
-      image.loading = 'lazy';
-      postBox.appendChild(image);
-    }
+
+    card.appendChild(postBox);
   } else {
-    const missing = document.createElement('p');
-    missing.className = 'muted';
-    missing.textContent = 'This post is no longer available.';
-    postBox.appendChild(missing);
+    const memberBox = document.createElement('section');
+    memberBox.className = 'reported-member-admin-preview';
+
+    const member = report.reportedMember;
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    setAvatar(avatar, member || {});
+
+    const identity = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = member?.full_name || 'Member unavailable';
+    const username = document.createElement('span');
+    username.textContent = `@${member?.username || 'member'}`;
+    const bio = document.createElement('p');
+    bio.textContent = member?.bio || 'No bio available.';
+    identity.append(name, username, bio);
+
+    memberBox.append(avatar, identity);
+    card.appendChild(memberBox);
   }
-  card.appendChild(postBox);
 
   const actions = document.createElement('div');
   actions.className = 'admin-report-actions';
 
   if (report.status !== 'reviewing') {
-    actions.appendChild(adminActionButton('Start review', () => updateReportStatus(report.id, 'reviewing')));
+    actions.appendChild(adminActionButton(
+      'Start review',
+      () => updateReportStatus(report, 'reviewing')
+    ));
   }
   if (report.status !== 'resolved') {
-    actions.appendChild(adminActionButton('Resolve', () => updateReportStatus(report.id, 'resolved'), 'primary-lite'));
+    actions.appendChild(adminActionButton(
+      'Resolve',
+      () => updateReportStatus(report, 'resolved'),
+      'primary-lite'
+    ));
   }
   if (report.status !== 'dismissed') {
-    actions.appendChild(adminActionButton('Dismiss', () => updateReportStatus(report.id, 'dismissed')));
+    actions.appendChild(adminActionButton(
+      'Dismiss',
+      () => updateReportStatus(report, 'dismissed')
+    ));
   }
-  if (report.post) {
-    actions.appendChild(adminActionButton('Delete post', () => adminDeleteReportedPost(report), 'danger'));
+  if (report.kind === 'post' && report.post) {
+    actions.appendChild(adminActionButton(
+      'Delete post',
+      () => adminDeleteReportedPost(report),
+      'danger'
+    ));
+  }
+  if (report.kind === 'member' && report.reportedMember) {
+    actions.appendChild(adminActionButton(
+      'Open profile',
+      () => openMemberProfile(report.reportedMember.id, { returnMode: 'admin' })
+    ));
   }
 
   card.appendChild(actions);
@@ -1596,12 +2288,15 @@ function adminActionButton(label, action, variant = '') {
   return button;
 }
 
-async function updateReportStatus(reportId, status) {
+async function updateReportStatus(report, status) {
+  const table = report.kind === 'member' ? 'kt_member_reports' : 'kt_reports';
+
   try {
     const { error } = await supabase
-      .from('kt_reports')
+      .from(table)
       .update({ status })
-      .eq('id', reportId);
+      .eq('id', report.id);
+
     if (error) throw error;
 
     showToast(`Report marked ${status}.`);
