@@ -154,7 +154,7 @@ function bindEvents() {
   });
 
   document.addEventListener('click', () => {
-    $$('.comment-menu.open').forEach(menu => menu.classList.remove('open'));
+    closeCommentMenus();
   });
 
   $$('[data-feed]').forEach(button => {
@@ -539,6 +539,15 @@ function renderPost(post, followingIds) {
   return node;
 }
 
+function closeCommentMenus(exceptMenu = null) {
+  $$('.comment-menu.open').forEach(menu => {
+    if (menu === exceptMenu) return;
+    menu.classList.remove('open');
+    const bubble = menu.closest('.comment-content')?.querySelector('.comment-bubble-owner');
+    bubble?.setAttribute('aria-expanded', 'false');
+  });
+}
+
 function renderComment(comment) {
   const profile = feedState.profiles.get(comment.user_id) || { full_name:'Khmer Together Member' };
   const wrap = document.createElement('div');
@@ -579,55 +588,76 @@ function renderComment(comment) {
   wrap.append(avatar, content);
 
   if (comment.user_id === currentUser.id) {
-    const ownerControls = document.createElement('div');
-    ownerControls.className = 'comment-owner-controls';
-
-    const menuButton = document.createElement('button');
-    menuButton.type = 'button';
-    menuButton.className = 'comment-menu-button';
-    menuButton.setAttribute('aria-label', 'Comment options');
-    menuButton.setAttribute('aria-expanded', 'false');
-    menuButton.textContent = '⋯';
+    bubble.classList.add('comment-bubble-owner');
+    bubble.setAttribute('role', 'button');
+    bubble.setAttribute('tabindex', '0');
+    bubble.setAttribute('aria-haspopup', 'menu');
+    bubble.setAttribute('aria-expanded', 'false');
+    bubble.setAttribute('aria-label', 'Open options for your comment');
 
     const menu = document.createElement('div');
-    menu.className = 'comment-menu';
+    menu.className = 'comment-menu comment-bubble-menu';
+    menu.setAttribute('role', 'menu');
 
     const editButton = document.createElement('button');
     editButton.type = 'button';
     editButton.className = 'comment-menu-item';
+    editButton.setAttribute('role', 'menuitem');
     editButton.textContent = 'Edit comment';
     editButton.addEventListener('click', event => {
       event.stopPropagation();
       menu.classList.remove('open');
-      menuButton.setAttribute('aria-expanded', 'false');
+      bubble.setAttribute('aria-expanded', 'false');
       beginEditComment(comment, content, bubble);
     });
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.className = 'comment-menu-item danger';
+    deleteButton.setAttribute('role', 'menuitem');
     deleteButton.textContent = 'Delete comment';
     deleteButton.addEventListener('click', event => {
       event.stopPropagation();
       menu.classList.remove('open');
-      menuButton.setAttribute('aria-expanded', 'false');
+      bubble.setAttribute('aria-expanded', 'false');
       deleteComment(comment);
     });
 
     menu.append(editButton, deleteButton);
+    content.appendChild(menu);
 
-    menuButton.addEventListener('click', event => {
+    const toggleMenu = event => {
       event.stopPropagation();
       const opening = !menu.classList.contains('open');
-      $$('.comment-menu.open').forEach(otherMenu => otherMenu.classList.remove('open'));
+      closeCommentMenus(menu);
       menu.classList.toggle('open', opening);
-      menuButton.setAttribute('aria-expanded', String(opening));
+      bubble.setAttribute('aria-expanded', String(opening));
+
+      if (opening) {
+        setTimeout(() => editButton.focus(), 0);
+      }
+    };
+
+    bubble.addEventListener('click', toggleMenu);
+    bubble.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleMenu(event);
+      } else if (event.key === 'Escape') {
+        menu.classList.remove('open');
+        bubble.setAttribute('aria-expanded', 'false');
+        bubble.focus();
+      }
     });
 
     menu.addEventListener('click', event => event.stopPropagation());
-
-    ownerControls.append(menuButton, menu);
-    wrap.appendChild(ownerControls);
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        menu.classList.remove('open');
+        bubble.setAttribute('aria-expanded', 'false');
+        bubble.focus();
+      }
+    });
   }
 
   return wrap;

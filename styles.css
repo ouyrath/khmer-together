@@ -116,3 +116,42 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .comment-menu{right:-2px}
   .comment-edit-form{min-width:min(300px,68vw)}
 }
+
+
+/* Tap your own comment bubble to open Edit/Delete */
+.comment-content{
+  position:relative;
+  flex:0 1 auto;
+  max-width:calc(100% - 40px);
+}
+.comment-owner-controls,
+.comment-menu-button{
+  display:none!important;
+}
+.comment-bubble-owner{
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  transition:background-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.comment-bubble-owner:hover,
+.comment-bubble-owner[aria-expanded="true"]{
+  background:#e7edf5;
+}
+.comment-bubble-owner:active{
+  transform:scale(.985);
+}
+.comment-bubble-owner:focus-visible{
+  outline:2px solid var(--blue);
+  outline-offset:2px;
+}
+.comment-bubble-menu{
+  left:0;
+  right:auto;
+  top:calc(100% + 6px);
+  min-width:160px;
+}
+@media(max-width:470px){
+  .comment-content{max-width:calc(100% - 40px)}
+  .comment-bubble-menu{left:0;right:auto}
+}
