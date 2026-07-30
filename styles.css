@@ -414,3 +414,121 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .member-profile-actions .button:first-child:last-child{grid-column:1/-1}
   .member-profile-stats{margin-top:19px}
 }
+
+
+/* Notifications */
+.notification-bell{
+  position:relative;width:38px;height:38px;border:1px solid var(--line);
+  border-radius:50%;background:#fff;display:grid;place-items:center;
+  font-size:17px;box-shadow:0 2px 8px rgba(24,48,79,.07)
+}
+.notification-bell:hover{background:var(--soft)}
+.notification-badge,.nav-notification-badge{
+  display:grid;place-items:center;background:var(--bad);color:#fff;
+  font-size:9px;font-weight:900;line-height:1;min-width:18px;height:18px;
+  padding:0 4px;border-radius:10px
+}
+.notification-badge{
+  position:absolute;right:-5px;top:-5px;border:2px solid #fff
+}
+.notification-nav-item{position:relative}
+.nav-notification-badge{margin-left:auto}
+.notifications-view{display:grid;gap:16px}
+.notifications-page-header{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:18px
+}
+.notifications-page-header h2{
+  font-size:28px;letter-spacing:-.03em;margin:6px 0 3px
+}
+.notifications-page-header p{
+  margin:0;color:var(--muted);font-size:13px
+}
+.notifications-header-actions{
+  display:flex;align-items:center;gap:8px;flex:0 0 auto
+}
+.notification-filters{
+  display:flex;gap:7px;background:#edf2f7;border-radius:12px;
+  width:max-content;padding:4px
+}
+.notification-filter{
+  border:0;background:transparent;color:var(--muted);border-radius:9px;
+  padding:8px 15px;font-size:11px;font-weight:850
+}
+.notification-filter.active{
+  background:#fff;color:var(--blue);box-shadow:0 2px 7px rgba(24,48,79,.08)
+}
+.notifications-list{display:grid;gap:10px}
+.notification-card{
+  padding:0;display:flex;align-items:center;overflow:hidden;
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease
+}
+.notification-card.unread{
+  border-color:#b9d6ef;background:#f6fbff;
+  box-shadow:0 8px 24px rgba(15,76,129,.09)
+}
+.notification-open-button{
+  flex:1;min-width:0;border:0;background:transparent;text-align:left;
+  display:grid;grid-template-columns:auto auto minmax(0,1fr);
+  gap:11px;align-items:center;padding:14px 8px 14px 15px;color:inherit
+}
+.notification-open-button:hover{background:rgba(15,76,129,.035)}
+.notification-type-icon{
+  width:31px;height:31px;border-radius:50%;display:grid;place-items:center;
+  font-size:13px;font-weight:950;background:#e8f2fb;color:var(--blue)
+}
+.notification-type-icon.type-like{background:#fdebea;color:#b8332c}
+.notification-type-icon.type-comment{background:#eaf6ef;color:#287448}
+.notification-avatar{width:45px;height:45px}
+.notification-content{min-width:0}
+.notification-content p{
+  margin:0;color:var(--ink);font-size:13px;line-height:1.4;font-weight:700
+}
+.notification-meta{
+  margin-top:3px;color:var(--muted);font-size:10px;font-weight:700
+}
+.notification-post-preview{
+  display:block;margin-top:7px;color:#617087;font-size:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px
+}
+.notification-controls{
+  min-width:83px;padding:10px 13px 10px 4px;display:flex;
+  flex-direction:column;align-items:flex-end;gap:8px
+}
+.notification-unread-dot{
+  width:9px;height:9px;border-radius:50%;background:var(--blue)
+}
+.notification-read-button{
+  border:0;background:transparent;color:var(--blue);font-size:9px;
+  font-weight:850;padding:3px
+}
+.notifications-error{padding:18px;color:var(--bad);font-weight:750}
+.notification-target-post{
+  animation:notificationTargetPulse 2.7s ease
+}
+@keyframes notificationTargetPulse{
+  0%,100%{box-shadow:var(--shadow)}
+  20%,70%{
+    box-shadow:0 0 0 4px rgba(15,76,129,.16),0 14px 35px rgba(15,76,129,.18);
+    border-color:#7db2dc
+  }
+}
+@media(max-width:650px){
+  .top-actions{gap:6px}
+  .notification-bell{width:36px;height:36px}
+  .notifications-page-header{align-items:center}
+  .notifications-page-header h2{font-size:24px}
+  .notifications-header-actions .button{font-size:10px;padding:8px 10px}
+  .notification-open-button{
+    grid-template-columns:auto minmax(0,1fr);gap:9px;padding:12px 5px 12px 12px
+  }
+  .notification-type-icon{display:none}
+  .notification-avatar{width:42px;height:42px}
+  .notification-controls{min-width:62px;padding-right:9px}
+  .notification-read-button{font-size:8px}
+}
+@media(max-width:430px){
+  #newPostTop{display:none}
+  .notification-post-preview{max-width:180px}
+  .notifications-header-actions{gap:5px}
+  .notifications-header-actions .icon-button{width:36px;height:36px}
+}

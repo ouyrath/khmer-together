@@ -22,6 +22,13 @@ let activeMemberPosts = [];
 let activeMemberStats = { posts: 0, followers: 0, following: 0 };
 let memberProfileReturnMode = 'members';
 let memberSearchTerm = '';
+let notifications = [];
+let notificationProfiles = new Map();
+let notificationPosts = new Map();
+let notificationFilter = 'all';
+let unreadNotificationCount = 0;
+let notificationChannel = null;
+let notificationPollTimer = null;
 const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [], blocks: [] };
 
@@ -80,7 +87,20 @@ const els = {
   memberReportMessage: $('#memberReportMessage'),
   submitMemberReport: $('#submitMemberReportButton'),
   reportedMemberPreview: $('#reportedMemberPreview'),
-  myProfileSummary: $('#myProfileSummary')
+  myProfileSummary: $('#myProfileSummary'),
+  notificationBell: $('#notificationBell'),
+  notificationBellBadge: $('#notificationBellBadge'),
+  notificationsNav: $('#notificationsNav'),
+  notificationNavBadge: $('#notificationNavBadge'),
+  notificationsView: $('#notificationsView'),
+  notificationsList: $('#notificationsList'),
+  notificationsLoading: $('#notificationsLoading'),
+  notificationsEmpty: $('#notificationsEmpty'),
+  notificationsEmptyTitle: $('#notificationsEmptyTitle'),
+  notificationsEmptyText: $('#notificationsEmptyText'),
+  notificationsSummary: $('#notificationsSummary'),
+  notificationsRefreshButton: $('#notificationsRefreshButton'),
+  markAllNotificationsRead: $('#markAllNotificationsRead')
 };
 
 function initials(name = 'KT') {
@@ -261,6 +281,21 @@ function bindEvents() {
   });
   els.memberReportForm.addEventListener('submit', submitMemberReport);
   els.myProfileSummary.addEventListener('click', () => openMemberProfile(currentUser.id));
+  els.notificationBell.addEventListener('click', () => {
+    if (location.pathname.startsWith('/u/')) history.pushState({}, '', '/');
+    switchView('notifications');
+  });
+  els.notificationsRefreshButton.addEventListener('click', loadNotifications);
+  els.markAllNotificationsRead.addEventListener('click', markAllNotificationsAsRead);
+  $$('[data-notification-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      notificationFilter = button.dataset.notificationFilter;
+      $$('[data-notification-filter]').forEach(item =>
+        item.classList.toggle('active', item === button)
+      );
+      renderNotifications();
+    });
+  });
   window.addEventListener('popstate', handleLocationRoute);
   $$('.close-button').forEach(button => {
     button.addEventListener('click', () => button.closest('dialog')?.close());
@@ -280,6 +315,8 @@ function bindEvents() {
 }
 
 async function handleSession(session) {
+  await stopNotificationUpdates();
+
   currentUser = session?.user || null;
   if (!currentUser) {
     currentProfile = null;
@@ -288,6 +325,11 @@ async function handleSession(session) {
     blockedUsers = [];
     activeMemberProfile = null;
     activeMemberPosts = [];
+    notifications = [];
+    notificationProfiles = new Map();
+    notificationPosts = new Map();
+    unreadNotificationCount = 0;
+    updateNotificationBadges();
     els.adminReportsNav.classList.add('hidden');
     els.authView.classList.remove('hidden');
     els.appView.classList.add('hidden');
@@ -303,7 +345,8 @@ async function handleSession(session) {
   await checkAdminAccess();
   updateMyProfileUI();
   switchView('all', false, false);
-  await loadFeed();
+  await Promise.all([loadFeed(), loadNotificationCount()]);
+  startNotificationUpdates();
   await handleLocationRoute();
 }
 
@@ -332,7 +375,8 @@ function switchView(mode, load = true, updateHistory = true) {
   const blockedMode = mode === 'blocked';
   const membersMode = mode === 'members';
   const profileMode = mode === 'profile';
-  const specialMode = adminMode || blockedMode || membersMode || profileMode;
+  const notificationsMode = mode === 'notifications';
+  const specialMode = adminMode || blockedMode || membersMode || profileMode || notificationsMode;
 
   els.composerCard.classList.toggle('hidden', specialMode);
   els.feedHeading.classList.toggle('hidden', specialMode);
@@ -341,6 +385,7 @@ function switchView(mode, load = true, updateHistory = true) {
   els.blockedUsersView.classList.toggle('hidden', !blockedMode);
   els.membersView.classList.toggle('hidden', !membersMode);
   els.memberProfileView.classList.toggle('hidden', !profileMode);
+  els.notificationsView.classList.toggle('hidden', !notificationsMode);
 
   if (updateHistory && !profileMode && location.pathname.startsWith('/u/')) {
     history.pushState({}, '', '/');
@@ -371,6 +416,14 @@ function switchView(mode, load = true, updateHistory = true) {
   if (profileMode) {
     els.loading.classList.add('hidden');
     els.empty.classList.add('hidden');
+    return;
+  }
+
+  if (notificationsMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
+    if (load) loadNotifications();
+    else renderNotifications();
     return;
   }
 
@@ -661,7 +714,7 @@ async function loadFeed() {
 }
 
 function renderFeed() {
-  if (['admin','blocked','members','profile'].includes(feedMode)) return;
+  if (['admin','blocked','members','profile','notifications'].includes(feedMode)) return;
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
@@ -683,6 +736,7 @@ function closePostMenus(exceptMenu = null) {
 
 function renderPost(post, followingIds) {
   const node = $('#postTemplate').content.firstElementChild.cloneNode(true);
+  node.dataset.postId = post.id;
   const profile = feedState.profiles.get(post.user_id) || { full_name:'Khmer Together Member', username:'member' };
   const postComments = feedState.comments.filter(c => c.post_id === post.id);
   const postLikes = feedState.likes.filter(l => l.post_id === post.id);
@@ -1415,6 +1469,377 @@ async function deletePost(post) {
 }
 
 
+
+
+function updateNotificationBadges() {
+  const count = Math.max(0, Number(unreadNotificationCount) || 0);
+  const label = count > 99 ? '99+' : String(count);
+
+  for (const badge of [els.notificationBellBadge, els.notificationNavBadge]) {
+    badge.textContent = label;
+    badge.classList.toggle('hidden', count === 0);
+  }
+
+  els.notificationBell.setAttribute(
+    'aria-label',
+    count
+      ? `Open notifications, ${count} unread`
+      : 'Open notifications'
+  );
+}
+
+async function loadNotificationCount() {
+  if (!currentUser) return;
+
+  try {
+    const { count, error } = await supabase
+      .from('kt_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipient_id', currentUser.id)
+      .is('read_at', null);
+
+    if (error) throw error;
+    unreadNotificationCount = count || 0;
+    updateNotificationBadges();
+  } catch (error) {
+    console.warn('Unable to load notification count:', error);
+  }
+}
+
+async function loadNotifications() {
+  if (!currentUser) return;
+
+  els.notificationsLoading.classList.remove('hidden');
+  els.notificationsEmpty.classList.add('hidden');
+  els.notificationsList.innerHTML = '';
+  els.notificationsRefreshButton.disabled = true;
+
+  try {
+    const [notificationsResult, unreadResult] = await Promise.all([
+      supabase
+        .from('kt_notifications')
+        .select('*')
+        .eq('recipient_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabase
+        .from('kt_notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', currentUser.id)
+        .is('read_at', null)
+    ]);
+
+    if (notificationsResult.error) throw notificationsResult.error;
+    if (unreadResult.error) throw unreadResult.error;
+
+    notifications = notificationsResult.data || [];
+    unreadNotificationCount = unreadResult.count || 0;
+    updateNotificationBadges();
+
+    const actorIds = [...new Set(notifications.map(item => item.actor_id).filter(Boolean))];
+    const postIds = [...new Set(notifications.map(item => item.post_id).filter(Boolean))];
+
+    const [profilesResult, postsResult] = await Promise.all([
+      actorIds.length
+        ? supabase.from('kt_profiles').select('*').in('id', actorIds)
+        : Promise.resolve({ data: [], error: null }),
+      postIds.length
+        ? supabase.from('kt_posts').select('id,body,image_url,user_id,created_at').in('id', postIds)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+
+    if (profilesResult.error) throw profilesResult.error;
+    if (postsResult.error) throw postsResult.error;
+
+    notificationProfiles = new Map(
+      (profilesResult.data || []).map(profile => [profile.id, profile])
+    );
+    notificationPosts = new Map(
+      (postsResult.data || []).map(post => [post.id, post])
+    );
+
+    renderNotifications();
+  } catch (error) {
+    els.notificationsList.innerHTML = '';
+    const message = document.createElement('section');
+    message.className = 'card notifications-error';
+    message.textContent = `Unable to load notifications: ${error.message || error}`;
+    els.notificationsList.appendChild(message);
+  } finally {
+    els.notificationsLoading.classList.add('hidden');
+    els.notificationsRefreshButton.disabled = false;
+  }
+}
+
+function notificationMessage(notification, actorName) {
+  if (notification.type === 'follow') return `${actorName} started following you.`;
+  if (notification.type === 'like') return `${actorName} liked your post.`;
+  if (notification.type === 'comment') return `${actorName} commented on your post.`;
+  return `${actorName} interacted with your account.`;
+}
+
+function notificationIcon(type) {
+  if (type === 'follow') return '＋';
+  if (type === 'like') return '♥';
+  if (type === 'comment') return '◯';
+  return '♢';
+}
+
+function renderNotifications() {
+  if (!currentUser) return;
+
+  const visible = notificationFilter === 'unread'
+    ? notifications.filter(item => !item.read_at)
+    : notifications;
+
+  els.notificationsList.innerHTML = '';
+  els.notificationsEmpty.classList.toggle('hidden', visible.length > 0);
+  els.markAllNotificationsRead.disabled = unreadNotificationCount === 0;
+
+  els.notificationsSummary.textContent = unreadNotificationCount
+    ? `${unreadNotificationCount} unread ${unreadNotificationCount === 1 ? 'notification' : 'notifications'}`
+    : 'You are all caught up.';
+
+  if (!visible.length) {
+    const unreadOnly = notificationFilter === 'unread';
+    els.notificationsEmptyTitle.textContent = unreadOnly
+      ? 'No unread notifications'
+      : 'No notifications yet';
+    els.notificationsEmptyText.textContent = unreadOnly
+      ? 'You have read every notification.'
+      : 'New followers, likes, and comments will appear here.';
+    return;
+  }
+
+  for (const notification of visible) {
+    els.notificationsList.appendChild(renderNotificationCard(notification));
+  }
+}
+
+function renderNotificationCard(notification) {
+  const actor = notificationProfiles.get(notification.actor_id) || {
+    full_name: 'Khmer Together Member',
+    username: 'member'
+  };
+  const post = notification.post_id
+    ? notificationPosts.get(notification.post_id)
+    : null;
+  const unread = !notification.read_at;
+
+  const card = document.createElement('article');
+  card.className = `card notification-card ${unread ? 'unread' : ''}`.trim();
+  card.dataset.notificationId = notification.id;
+
+  const openButton = document.createElement('button');
+  openButton.type = 'button';
+  openButton.className = 'notification-open-button';
+  openButton.addEventListener('click', () => openNotification(notification));
+
+  const iconWrap = document.createElement('div');
+  iconWrap.className = `notification-type-icon type-${notification.type}`;
+  iconWrap.textContent = notificationIcon(notification.type);
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar notification-avatar';
+  setAvatar(avatar, actor);
+
+  const content = document.createElement('div');
+  content.className = 'notification-content';
+
+  const message = document.createElement('p');
+  const actorName = actor.full_name || 'A member';
+  message.textContent = notificationMessage(notification, actorName);
+
+  const meta = document.createElement('div');
+  meta.className = 'notification-meta';
+
+  const username = document.createElement('span');
+  username.textContent = `@${actor.username || 'member'}`;
+
+  const time = document.createElement('time');
+  time.dateTime = notification.created_at;
+  time.textContent = timeAgo(notification.created_at);
+
+  meta.append(username, document.createTextNode(' · '), time);
+  content.append(message, meta);
+
+  if (post && (post.body || post.image_url)) {
+    const preview = document.createElement('small');
+    preview.className = 'notification-post-preview';
+    preview.textContent = post.body
+      ? post.body.slice(0, 120)
+      : 'Photo post';
+    content.appendChild(preview);
+  }
+
+  openButton.append(iconWrap, avatar, content);
+
+  const controls = document.createElement('div');
+  controls.className = 'notification-controls';
+
+  if (unread) {
+    const unreadDot = document.createElement('span');
+    unreadDot.className = 'notification-unread-dot';
+    unreadDot.title = 'Unread';
+
+    const markRead = document.createElement('button');
+    markRead.type = 'button';
+    markRead.className = 'notification-read-button';
+    markRead.textContent = 'Mark read';
+    markRead.addEventListener('click', event => {
+      event.stopPropagation();
+      markNotificationAsRead(notification.id);
+    });
+
+    controls.append(unreadDot, markRead);
+  }
+
+  card.append(openButton, controls);
+  return card;
+}
+
+async function markNotificationAsRead(notificationId, refreshPage = true) {
+  const notification = notifications.find(item => item.id === notificationId);
+  if (!notification || notification.read_at) return true;
+
+  try {
+    const readAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('kt_notifications')
+      .update({ read_at: readAt })
+      .eq('id', notificationId)
+      .eq('recipient_id', currentUser.id);
+
+    if (error) throw error;
+
+    notification.read_at = readAt;
+    unreadNotificationCount = Math.max(0, unreadNotificationCount - 1);
+    updateNotificationBadges();
+    if (refreshPage) renderNotifications();
+    return true;
+  } catch (error) {
+    showToast(error.message || 'Unable to mark the notification as read.');
+    return false;
+  }
+}
+
+async function markAllNotificationsAsRead() {
+  if (!unreadNotificationCount) return;
+
+  els.markAllNotificationsRead.disabled = true;
+  els.markAllNotificationsRead.textContent = 'Marking…';
+
+  try {
+    const readAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('kt_notifications')
+      .update({ read_at: readAt })
+      .eq('recipient_id', currentUser.id)
+      .is('read_at', null);
+
+    if (error) throw error;
+
+    notifications = notifications.map(item => (
+      item.read_at ? item : { ...item, read_at: readAt }
+    ));
+    unreadNotificationCount = 0;
+    updateNotificationBadges();
+    renderNotifications();
+    showToast('All notifications marked as read.');
+  } catch (error) {
+    showToast(error.message || 'Unable to mark all notifications as read.');
+  } finally {
+    els.markAllNotificationsRead.textContent = 'Mark all read';
+    els.markAllNotificationsRead.disabled = unreadNotificationCount === 0;
+  }
+}
+
+async function openNotification(notification) {
+  await markNotificationAsRead(notification.id, false);
+
+  if (notification.type === 'follow' || !notification.post_id) {
+    await openMemberProfile(notification.actor_id, {
+      returnMode: 'notifications'
+    });
+    return;
+  }
+
+  history.pushState({}, '', '/');
+  switchView('all', false, false);
+  await loadFeed();
+
+  const postCard = document.querySelector(
+    `[data-post-id="${notification.post_id}"]`
+  );
+
+  if (!postCard) {
+    showToast('This post is no longer available.');
+    return;
+  }
+
+  postCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  postCard.classList.add('notification-target-post');
+  setTimeout(() => postCard.classList.remove('notification-target-post'), 2800);
+}
+
+function startNotificationUpdates() {
+  if (!currentUser || notificationChannel) return;
+
+  notificationChannel = supabase
+    .channel(`kt-notifications-${currentUser.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'kt_notifications',
+        filter: `recipient_id=eq.${currentUser.id}`
+      },
+      async payload => {
+        unreadNotificationCount += 1;
+        updateNotificationBadges();
+        showToast('You have a new notification.');
+
+        if (feedMode === 'notifications') {
+          await loadNotifications();
+        }
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'kt_notifications',
+        filter: `recipient_id=eq.${currentUser.id}`
+      },
+      async () => {
+        await loadNotificationCount();
+        if (feedMode === 'notifications') await loadNotifications();
+      }
+    )
+    .subscribe();
+
+  notificationPollTimer = window.setInterval(() => {
+    loadNotificationCount();
+  }, 45000);
+}
+
+async function stopNotificationUpdates() {
+  if (notificationPollTimer) {
+    clearInterval(notificationPollTimer);
+    notificationPollTimer = null;
+  }
+
+  if (notificationChannel && supabase) {
+    try {
+      await supabase.removeChannel(notificationChannel);
+    } catch (error) {
+      console.warn('Unable to close notification channel:', error);
+    }
+  }
+  notificationChannel = null;
+}
 
 function currentFollowingIds() {
   return new Set(

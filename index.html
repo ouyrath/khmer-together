@@ -22,6 +22,10 @@
     </a>
 
     <nav id="topActions" class="top-actions hidden">
+      <button id="notificationBell" class="notification-bell" type="button" aria-label="Open notifications" title="Notifications">
+        <span aria-hidden="true">🔔</span>
+        <strong id="notificationBellBadge" class="notification-badge hidden">0</strong>
+      </button>
       <button id="newPostTop" class="button small primary" type="button">Create post</button>
       <button id="signOutButton" class="button small ghost" type="button">Sign out</button>
     </nav>
@@ -95,6 +99,10 @@
         <nav class="side-nav" aria-label="Main navigation">
           <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
           <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
+          <button id="notificationsNav" class="nav-item notification-nav-item" data-feed="notifications" type="button">
+            <span>♢</span> Notifications
+            <strong id="notificationNavBadge" class="nav-notification-badge hidden">0</strong>
+          </button>
           <button id="membersNav" class="nav-item" data-feed="members" type="button"><span>⌕</span> Find members</button>
           <button id="blockedUsersNav" class="nav-item" data-feed="blocked" type="button"><span>⊘</span> Blocked users</button>
           <button id="adminReportsNav" class="nav-item admin-nav hidden" data-feed="admin" type="button"><span>⚑</span> Admin reports</button>
@@ -132,6 +140,33 @@
           <button id="emptyCreatePost" class="button primary" type="button">Create the first post</button>
         </div>
         <div id="feed" class="feed"></div>
+
+        <section id="notificationsView" class="notifications-view hidden" aria-labelledby="notificationsTitle">
+          <div class="notifications-page-header">
+            <div>
+              <span class="mini-badge">YOUR ACTIVITY</span>
+              <h2 id="notificationsTitle">Notifications</h2>
+              <p id="notificationsSummary">See new followers, likes, and comments.</p>
+            </div>
+            <div class="notifications-header-actions">
+              <button id="markAllNotificationsRead" class="button small ghost" type="button">Mark all read</button>
+              <button id="notificationsRefreshButton" class="icon-button" type="button" title="Refresh notifications" aria-label="Refresh notifications">↻</button>
+            </div>
+          </div>
+
+          <div class="notification-filters" role="group" aria-label="Notification filter">
+            <button class="notification-filter active" data-notification-filter="all" type="button">All</button>
+            <button class="notification-filter" data-notification-filter="unread" type="button">Unread</button>
+          </div>
+
+          <div id="notificationsLoading" class="loading-card card hidden">Loading notifications…</div>
+          <div id="notificationsEmpty" class="empty-card card hidden">
+            <div class="empty-icon">✓</div>
+            <h3 id="notificationsEmptyTitle">No notifications yet</h3>
+            <p id="notificationsEmptyText">New followers, likes, and comments will appear here.</p>
+          </div>
+          <div id="notificationsList" class="notifications-list"></div>
+        </section>
 
         <section id="membersView" class="members-view hidden" aria-labelledby="membersTitle">
           <div class="members-page-header">
