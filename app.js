@@ -62,14 +62,15 @@ function timeAgo(iso) {
 
 async function init() {
   try {
-    const config = window.KT_CONFIG || {};
-    if (
-      !config.url ||
-      !config.key ||
-      config.url.includes('PASTE_') ||
-      config.key.includes('PASTE_')
-    ) {
-      throw new Error('Supabase connection details have not been added to config.js yet.');
+    const response = await fetch('/api/config', { cache: 'no-store' });
+    const config = await response.json();
+
+    if (!response.ok) {
+      throw new Error(config.error || 'Unable to load the Supabase connection.');
+    }
+
+    if (!config.url || !config.key) {
+      throw new Error('The Supabase publishable key has not been added in Vercel yet.');
     }
 
     supabase = createClient(config.url, config.key, {
@@ -83,7 +84,7 @@ async function init() {
     document.body.innerHTML = `<main style="font-family:Arial,sans-serif;max-width:680px;margin:70px auto;padding:24px">
       <h1>Khmer Together setup is not finished</h1>
       <p>${String(error.message || error)}</p>
-      <p>Open <strong>config.js</strong> in GitHub and add the Supabase Project URL and publishable key.</p>
+      <p>Add <strong>SUPABASE_PUBLISHABLE_KEY</strong> in the Vercel Environment Variables, then redeploy.</p>
     </main>`;
   }
 }
