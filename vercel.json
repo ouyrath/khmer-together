@@ -20,6 +20,26 @@
     {
       "src": "favicon.svg",
       "use": "@vercel/static"
+    },
+    {
+      "src": "legal.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "terms.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "privacy.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "guidelines.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "copyright.html",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
