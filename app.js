@@ -9,6 +9,10 @@ let currentProfile = null;
 let authMode = 'signin';
 let feedMode = 'all';
 let selectedImage = null;
+let selectedProfileImage = null;
+let removeProfileImageRequested = false;
+let reportingPostId = null;
+const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [] };
 
 const els = {
@@ -30,11 +34,41 @@ const els = {
   profileDialog: $('#profileDialog'), profileForm: $('#profileForm'),
   profileName: $('#profileName'), profileUsername: $('#profileUsername'),
   profileBio: $('#profileBio'), profileMessage: $('#profileMessage'),
-  saveProfile: $('#saveProfileButton')
+  saveProfile: $('#saveProfileButton'),
+  profilePhotoInput: $('#profilePhotoInput'),
+  profilePhotoPreview: $('#profilePhotoPreview'),
+  removeProfilePhoto: $('#removeProfilePhotoButton'),
+  reportDialog: $('#reportDialog'), reportForm: $('#reportForm'),
+  reportReason: $('#reportReason'), reportDetails: $('#reportDetails'),
+  reportMessage: $('#reportMessage'), submitReport: $('#submitReportButton')
 };
 
 function initials(name = 'KT') {
   return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'KT';
+}
+
+function setAvatar(element, profile = {}) {
+  if (!element) return;
+  const name = profile.full_name || 'Khmer Together Member';
+  const url = profile.avatar_url || '';
+  element.textContent = url ? '' : initials(name);
+  element.style.backgroundImage = url ? `url(${JSON.stringify(url)})` : '';
+  element.classList.toggle('has-image', Boolean(url));
+}
+
+function storagePathFromPublicUrl(url, bucket) {
+  if (!url) return null;
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const index = url.indexOf(marker);
+  if (index < 0) return null;
+  return decodeURIComponent(url.slice(index + marker.length).split('?')[0]);
+}
+
+function resetProfilePhotoEditor() {
+  selectedProfileImage = null;
+  removeProfileImageRequested = false;
+  els.profilePhotoInput.value = '';
+  setAvatar(els.profilePhotoPreview, currentProfile || {});
 }
 
 function showToast(message) {
@@ -103,6 +137,12 @@ function bindEvents() {
   els.profileForm.addEventListener('submit', saveProfile);
   els.postImage.addEventListener('change', previewImage);
   els.removeImage.addEventListener('click', clearSelectedImage);
+  els.profilePhotoInput.addEventListener('change', previewProfilePhoto);
+  els.removeProfilePhoto.addEventListener('click', removeProfilePhotoPreview);
+  els.reportForm.addEventListener('submit', submitPostReport);
+  $$('.close-button').forEach(button => {
+    button.addEventListener('click', () => button.closest('dialog')?.close());
+  });
 
   $$('[data-feed]').forEach(button => {
     button.addEventListener('click', () => {
@@ -155,11 +195,12 @@ function updateMyProfileUI() {
   const username = currentProfile?.username || 'member';
   els.myName.textContent = name;
   els.myUsername.textContent = `@${username}`;
-  els.myAvatar.textContent = initials(name);
-  els.composerAvatar.textContent = initials(name);
+  setAvatar(els.myAvatar, currentProfile || { full_name: name });
+  setAvatar(els.composerAvatar, currentProfile || { full_name: name });
   els.profileName.value = name;
   els.profileUsername.value = username;
   els.profileBio.value = currentProfile?.bio || '';
+  resetProfilePhotoEditor();
 }
 
 async function handleEmailAuth(event) {
@@ -205,6 +246,33 @@ async function signInWithGoogle() {
 
 function openComposer() { setMessage(els.postMessage); els.postDialog.showModal(); setTimeout(() => els.postBody.focus(), 50); }
 function openProfile() { updateMyProfileUI(); setMessage(els.profileMessage); els.profileDialog.showModal(); }
+
+function previewProfilePhoto() {
+  const file = els.profilePhotoInput.files?.[0];
+  if (!file) return resetProfilePhotoEditor();
+  if (file.size > 5 * 1024 * 1024) {
+    els.profilePhotoInput.value = '';
+    return setMessage(els.profileMessage, 'The profile picture must be 5 MB or smaller.');
+  }
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) {
+    els.profilePhotoInput.value = '';
+    return setMessage(els.profileMessage, 'Please choose a JPG, PNG, or WebP picture.');
+  }
+  selectedProfileImage = file;
+  removeProfileImageRequested = false;
+  const previewUrl = URL.createObjectURL(file);
+  setAvatar(els.profilePhotoPreview, { full_name: els.profileName.value || currentProfile?.full_name, avatar_url: previewUrl });
+  setTimeout(() => URL.revokeObjectURL(previewUrl), 60000);
+  setMessage(els.profileMessage);
+}
+
+function removeProfilePhotoPreview() {
+  selectedProfileImage = null;
+  removeProfileImageRequested = true;
+  els.profilePhotoInput.value = '';
+  setAvatar(els.profilePhotoPreview, { full_name: els.profileName.value || currentProfile?.full_name, avatar_url: null });
+  setMessage(els.profileMessage, 'The picture will be removed after you tap Save profile.', true);
+}
 
 function previewImage() {
   const file = els.postImage.files?.[0];
@@ -267,18 +335,50 @@ async function createPost(event) {
 async function saveProfile(event) {
   event.preventDefault();
   els.saveProfile.disabled = true;
+  els.saveProfile.textContent = 'Saving…';
   setMessage(els.profileMessage);
+
+  const oldAvatarUrl = currentProfile?.avatar_url || null;
+  let newAvatarUrl = removeProfileImageRequested ? null : oldAvatarUrl;
+
   try {
     const fullName = els.profileName.value.trim();
     const username = els.profileUsername.value.trim().toLowerCase();
     const bio = els.profileBio.value.trim();
-    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) throw new Error('Username must contain 3–30 letters, numbers, or underscores.');
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
+      throw new Error('Username must contain 3–30 letters, numbers, or underscores.');
+    }
+
+    if (selectedProfileImage) {
+      const extension = selectedProfileImage.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from('kt-profile-images')
+        .upload(path, selectedProfileImage, { cacheControl: '3600', upsert: false });
+      if (uploadError) throw uploadError;
+      newAvatarUrl = supabase.storage.from('kt-profile-images').getPublicUrl(path).data.publicUrl;
+    }
 
     const { data, error } = await supabase.from('kt_profiles')
-      .update({ full_name:fullName, username, bio, updated_at:new Date().toISOString() })
-      .eq('id', currentUser.id).select('*').single();
+      .update({
+        full_name: fullName,
+        username,
+        bio,
+        avatar_url: newAvatarUrl,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', currentUser.id)
+      .select('*')
+      .single();
     if (error) throw error;
+
     currentProfile = data;
+
+    if (oldAvatarUrl && oldAvatarUrl !== newAvatarUrl) {
+      const oldPath = storagePathFromPublicUrl(oldAvatarUrl, 'kt-profile-images');
+      if (oldPath) await supabase.storage.from('kt-profile-images').remove([oldPath]);
+    }
+
     updateMyProfileUI();
     els.profileDialog.close();
     showToast('Profile updated.');
@@ -287,6 +387,7 @@ async function saveProfile(event) {
     setMessage(els.profileMessage, error.message || 'Unable to update profile.');
   } finally {
     els.saveProfile.disabled = false;
+    els.saveProfile.textContent = 'Save profile';
   }
 }
 
@@ -342,7 +443,7 @@ function renderPost(post, followingIds) {
   const isMine = post.user_id === currentUser.id;
   const following = followingIds.has(post.user_id);
 
-  $('.post-avatar',node).textContent = initials(profile.full_name);
+  setAvatar($('.post-avatar',node), profile);
   $('.post-name',node).textContent = profile.full_name;
   $('.post-username',node).textContent = `@${profile.username}`;
   $('.post-time',node).textContent = timeAgo(post.created_at);
@@ -368,17 +469,22 @@ function renderPost(post, followingIds) {
 
   const deleteButton = $('.delete-post',node);
   deleteButton.classList.toggle('hidden',!isMine);
-  deleteButton.addEventListener('click', () => deletePost(post.id));
+  deleteButton.addEventListener('click', () => deletePost(post));
+
+  const reportButton = $('.report-post',node);
+  reportButton.classList.toggle('hidden',isMine);
+  reportButton.addEventListener('click', () => openReportDialog(post.id));
 
   const commentsWrap = $('.comments',node);
   for (const comment of postComments.slice(-6)) commentsWrap.appendChild(renderComment(comment));
 
   const commentInput = $('.comment-input',node);
+  const commentForm = $('.comment-form',node);
   $('.comment-focus',node).addEventListener('click', () => commentInput.focus());
-  $('.comment-avatar',node).textContent = initials(currentProfile.full_name);
-  $('.comment-form',node).addEventListener('submit', event => {
+  setAvatar($('.comment-avatar',node), currentProfile);
+  commentForm.addEventListener('submit', event => {
     event.preventDefault();
-    createComment(post.id,commentInput);
+    createComment(post.id, commentInput, commentForm);
   });
 
   return node;
@@ -392,7 +498,7 @@ function renderComment(comment) {
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
   avatar.style.width = '32px'; avatar.style.height = '32px'; avatar.style.fontSize = '11px';
-  avatar.textContent = initials(profile.full_name);
+  setAvatar(avatar, profile);
 
   const bubble = document.createElement('div');
   bubble.className = 'comment-bubble';
@@ -428,29 +534,104 @@ async function toggleFollow(userId,following) {
   } catch (error) { showToast(error.message || 'Unable to update follow.'); }
 }
 
-async function createComment(postId,input) {
+async function createComment(postId, input, form) {
   const body = input.value.trim();
-  if (!body) return;
+  if (!body || form.dataset.submitting === 'true') return;
+
+  const submissionKey = `${postId}:${body.toLocaleLowerCase()}`;
+  const lastSubmission = recentCommentSubmissions.get(submissionKey) || 0;
+  if (Date.now() - lastSubmission < 8000) {
+    showToast('That comment is already being posted.');
+    return;
+  }
+
+  const submitButton = $('.comment-submit', form);
+  form.dataset.submitting = 'true';
+  form.classList.add('submitting');
   input.disabled = true;
+  submitButton.disabled = true;
+  recentCommentSubmissions.set(submissionKey, Date.now());
+
   try {
-    const {error} = await supabase.from('kt_comments').insert({
-      post_id:postId,user_id:currentUser.id,body
+    const { error } = await supabase.from('kt_comments').insert({
+      post_id: postId,
+      user_id: currentUser.id,
+      body
     });
     if (error) throw error;
     input.value = '';
     await loadFeed();
-  } catch (error) { showToast(error.message || 'Unable to add comment.'); }
-  finally { input.disabled = false; }
+  } catch (error) {
+    recentCommentSubmissions.delete(submissionKey);
+    showToast(error.message || 'Unable to add comment.');
+  } finally {
+    form.dataset.submitting = 'false';
+    form.classList.remove('submitting');
+    input.disabled = false;
+    submitButton.disabled = false;
+  }
 }
 
-async function deletePost(postId) {
+async function deletePost(post) {
   if (!confirm('Delete this post? This cannot be undone.')) return;
   try {
-    const {error} = await supabase.from('kt_posts').delete().eq('id',postId);
+    const { error } = await supabase.from('kt_posts').delete().eq('id', post.id);
     if (error) throw error;
+
+    if (post.image_url) {
+      const path = storagePathFromPublicUrl(post.image_url, 'kt-post-images');
+      if (path) await supabase.storage.from('kt-post-images').remove([path]);
+    }
+
     showToast('Post deleted.');
     await loadFeed();
-  } catch (error) { showToast(error.message || 'Unable to delete post.'); }
+  } catch (error) {
+    showToast(error.message || 'Unable to delete post.');
+  }
 }
+
+function openReportDialog(postId) {
+  reportingPostId = postId;
+  els.reportReason.value = '';
+  els.reportDetails.value = '';
+  setMessage(els.reportMessage);
+  els.reportDialog.showModal();
+}
+
+async function submitPostReport(event) {
+  event.preventDefault();
+  if (!reportingPostId) return;
+
+  const reason = els.reportReason.value;
+  const details = els.reportDetails.value.trim();
+  if (!reason) return setMessage(els.reportMessage, 'Please select a reason.');
+
+  els.submitReport.disabled = true;
+  els.submitReport.textContent = 'Submitting…';
+  setMessage(els.reportMessage);
+
+  try {
+    const { error } = await supabase.from('kt_reports').insert({
+      post_id: reportingPostId,
+      reporter_id: currentUser.id,
+      reason,
+      details
+    });
+    if (error) {
+      if (error.code === '23505') throw new Error('You already reported this post.');
+      throw error;
+    }
+
+    els.reportDialog.close();
+    reportingPostId = null;
+    showToast('Report submitted privately.');
+  } catch (error) {
+    setMessage(els.reportMessage, error.message || 'Unable to submit the report.');
+  } finally {
+    els.submitReport.disabled = false;
+    els.submitReport.textContent = 'Submit report';
+  }
+}
+
 
 init();

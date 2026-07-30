@@ -19,3 +19,24 @@ label{display:block;font-size:13px;font-weight:800;margin-bottom:16px}input,text
 @media(max-width:1000px){.app-shell{grid-template-columns:210px minmax(0,1fr)}.rightbar{display:none}}
 @media(max-width:760px){.auth-shell{grid-template-columns:1fr;padding-top:28px}.hero{padding-bottom:0}.hero h1{font-size:43px}.hero-points{display:none}.app-shell{display:block;padding:16px 11px 45px}.sidebar{position:static;margin-bottom:14px}.side-nav{grid-template-columns:1fr 1fr}.community-note{display:none}.topbar{padding:0 13px}.brand small{display:none}.top-actions .ghost{display:none}.feed-heading{margin-top:18px}.post-header{align-items:flex-start}.follow-button{padding:7px 9px}}
 @media(max-width:470px){.brand strong{font-size:16px}.top-actions .primary{font-size:12px;padding:9px 10px}.auth-card{padding:22px}.hero h1{font-size:38px}}
+
+
+/* Khmer Together safety and profile upgrade */
+button:disabled{cursor:not-allowed;opacity:.62;transform:none!important}
+select{width:100%;border:1px solid #cdd7e4;border-radius:11px;padding:12px 13px;margin-top:7px;color:var(--ink);background:#fff;outline:none}
+select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
+.avatar{background-size:cover;background-position:center;background-repeat:no-repeat;overflow:hidden}
+.avatar.has-image{color:transparent;background-color:#e8eef5}
+.profile-photo-editor{display:flex;align-items:center;gap:17px;border:1px solid var(--line);background:var(--soft);border-radius:15px;padding:15px;margin-bottom:18px}
+.profile-photo-preview{width:82px;height:82px;font-size:24px;box-shadow:0 8px 22px rgba(15,76,129,.18)}
+.profile-photo-actions{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0}
+.profile-photo-actions small{color:var(--muted);font-size:11px}
+.photo-upload-button{margin:0!important;display:inline-flex!important;align-items:center;justify-content:center;cursor:pointer}
+.photo-upload-button input{display:none}
+.danger-text{color:var(--bad);margin:0;border:0;padding:0}
+.post-control{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:800;color:var(--muted)}
+.post-control:hover{background:var(--soft)}
+.post-control.danger{color:var(--bad);border-color:#f0c7c3}
+.comment-form.submitting{opacity:.72}
+.comment-form .comment-submit:disabled{background:#91abc1}
+@media(max-width:470px){.profile-photo-editor{align-items:flex-start}.profile-photo-preview{width:70px;height:70px}.post-actions-top{gap:4px}.post-control{padding:7px 8px;font-size:11px}}

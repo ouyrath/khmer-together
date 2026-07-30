@@ -151,7 +151,7 @@
           <h2>Create post</h2>
           <p>Share with the Khmer Together community.</p>
         </div>
-        <button class="close-button" value="cancel" aria-label="Close">×</button>
+        <button type="button" class="close-button" aria-label="Close">×</button>
       </div>
 
       <label>
@@ -183,8 +183,20 @@
           <h2>Edit profile</h2>
           <p>Help the community know who you are.</p>
         </div>
-        <button class="close-button" value="cancel" aria-label="Close">×</button>
+        <button type="button" class="close-button" aria-label="Close">×</button>
       </div>
+
+      <section class="profile-photo-editor" aria-label="Profile picture">
+        <div id="profilePhotoPreview" class="avatar profile-photo-preview">KT</div>
+        <div class="profile-photo-actions">
+          <label class="button ghost small photo-upload-button" for="profilePhotoInput">
+            Choose profile picture
+            <input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp">
+          </label>
+          <button id="removeProfilePhotoButton" class="text-button danger-text" type="button">Remove picture</button>
+          <small>JPG, PNG, or WebP — maximum 5 MB.</small>
+        </div>
+      </section>
 
       <label>
         Display name
@@ -205,6 +217,39 @@
     </form>
   </dialog>
 
+
+  <dialog id="reportDialog" class="modal">
+    <form id="reportForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Report post</h2>
+          <p>Your report is private and will be saved for review.</p>
+        </div>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <label>
+        Reason
+        <select id="reportReason" required>
+          <option value="">Select a reason</option>
+          <option value="spam_scam">Spam or scam</option>
+          <option value="harassment">Harassment or bullying</option>
+          <option value="hate">Hate or dangerous content</option>
+          <option value="inappropriate">Inappropriate content</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+
+      <label>
+        Details (optional)
+        <textarea id="reportDetails" maxlength="500" placeholder="Tell us what is wrong with this post."></textarea>
+      </label>
+
+      <p id="reportMessage" class="form-message" role="status"></p>
+      <button id="submitReportButton" class="button primary full" type="submit">Submit report</button>
+    </form>
+  </dialog>
+
   <template id="postTemplate">
     <article class="post-card card">
       <header class="post-header">
@@ -217,7 +262,8 @@
         </div>
         <div class="post-actions-top">
           <button class="follow-button button small ghost" type="button"></button>
-          <button class="delete-post icon-button danger hidden" type="button" title="Delete post" aria-label="Delete post">⋯</button>
+          <button class="report-post post-control hidden" type="button">Report</button>
+          <button class="delete-post post-control danger hidden" type="button">Delete</button>
         </div>
       </header>
 
@@ -239,7 +285,7 @@
       <form class="comment-form">
         <div class="avatar comment-avatar"></div>
         <input class="comment-input" maxlength="500" required placeholder="Write a comment…">
-        <button type="submit" aria-label="Post comment">➤</button>
+        <button class="comment-submit" type="submit" aria-label="Post comment">➤</button>
       </form>
     </article>
   </template>
