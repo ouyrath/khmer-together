@@ -133,7 +133,26 @@ const els = {
   conversationReportDetails: $('#conversationReportDetails'),
   conversationReportMessage: $('#conversationReportMessage'),
   submitConversationReport: $('#submitConversationReportButton'),
-  reportedConversationMember: $('#reportedConversationMember')
+  reportedConversationMember: $('#reportedConversationMember'),
+  accountSettingsNav: $('#accountSettingsNav'),
+  accountSettingsView: $('#accountSettingsView'),
+  settingsCurrentEmail: $('#settingsCurrentEmail'),
+  settingsCurrentUsername: $('#settingsCurrentUsername'),
+  settingsProvider: $('#settingsProvider'),
+  changeEmailForm: $('#changeEmailForm'), newEmail: $('#newEmailInput'),
+  changeEmailMessage: $('#changeEmailMessage'), changeEmailButton: $('#changeEmailButton'),
+  changePasswordForm: $('#changePasswordForm'), currentPassword: $('#currentPasswordInput'),
+  newPassword: $('#newPasswordInput'), confirmPassword: $('#confirmPasswordInput'),
+  passwordNonce: $('#passwordNonceInput'), changePasswordButton: $('#changePasswordButton'),
+  sendPasswordCode: $('#sendPasswordCodeButton'), changePasswordMessage: $('#changePasswordMessage'),
+  signOutEverywhere: $('#signOutEverywhereButton'),
+  signOutEverywhereMessage: $('#signOutEverywhereMessage'),
+  openDeleteAccount: $('#openDeleteAccountButton'), deleteAccountDialog: $('#deleteAccountDialog'),
+  deleteAccountForm: $('#deleteAccountForm'), deleteExpectedUsername: $('#deleteExpectedUsername'),
+  deleteUsername: $('#deleteUsernameInput'), deleteWord: $('#deleteWordInput'),
+  deleteUnderstanding: $('#deleteUnderstandingCheckbox'),
+  deleteAccountMessage: $('#deleteAccountMessage'),
+  confirmDeleteAccount: $('#confirmDeleteAccountButton')
 };
 
 function initials(name = 'KT') {
@@ -279,7 +298,7 @@ function bindEvents() {
   els.authForm.addEventListener('submit', handleEmailAuth);
   els.toggleMode.addEventListener('click', toggleAuthMode);
   els.google.addEventListener('click', signInWithGoogle);
-  const signOutUser = () => supabase.auth.signOut();
+  const signOutUser = () => supabase.auth.signOut({ scope: 'local' });
   els.signOut.addEventListener('click', signOutUser);
   els.mobileSignOut.addEventListener('click', signOutUser);
   els.refresh.addEventListener('click', loadFeed);
@@ -336,6 +355,12 @@ function bindEvents() {
   els.chatBlockButton.addEventListener('click', blockActiveChatMember);
   els.chatComposer.addEventListener('submit', sendChatMessage);
   els.conversationReportForm.addEventListener('submit', submitConversationReport);
+  els.changeEmailForm.addEventListener('submit', changeAccountEmail);
+  els.changePasswordForm.addEventListener('submit', changeAccountPassword);
+  els.sendPasswordCode.addEventListener('click', sendPasswordVerificationCode);
+  els.signOutEverywhere.addEventListener('click', signOutOnAllDevices);
+  els.openDeleteAccount.addEventListener('click', openDeleteAccountDialog);
+  els.deleteAccountForm.addEventListener('submit', permanentlyDeleteAccount);
   $$('[data-notification-filter]').forEach(button => {
     button.addEventListener('click', () => {
       notificationFilter = button.dataset.notificationFilter;
@@ -436,7 +461,8 @@ function switchView(mode, load = true, updateHistory = true) {
   const notificationsMode = mode === 'notifications';
   const messagesMode = mode === 'messages';
   const chatMode = mode === 'chat';
-  const specialMode = adminMode || blockedMode || membersMode || profileMode || notificationsMode || messagesMode || chatMode;
+  const settingsMode = mode === 'settings';
+  const specialMode = adminMode || blockedMode || membersMode || profileMode || notificationsMode || messagesMode || chatMode || settingsMode;
 
   els.composerCard.classList.toggle('hidden', specialMode);
   els.feedHeading.classList.toggle('hidden', specialMode);
@@ -448,6 +474,7 @@ function switchView(mode, load = true, updateHistory = true) {
   els.notificationsView.classList.toggle('hidden', !notificationsMode);
   els.messagesView.classList.toggle('hidden', !messagesMode);
   els.chatView.classList.toggle('hidden', !chatMode);
+  els.accountSettingsView.classList.toggle('hidden', !settingsMode);
 
   if (updateHistory && !profileMode && location.pathname.startsWith('/u/')) {
     history.pushState({}, '', '/');
@@ -494,6 +521,13 @@ function switchView(mode, load = true, updateHistory = true) {
     els.empty.classList.add('hidden');
     if (load) loadConversations();
     else renderConversations();
+    return;
+  }
+
+  if (settingsMode) {
+    els.loading.classList.add('hidden');
+    els.empty.classList.add('hidden');
+    renderAccountSettings();
     return;
   }
 
@@ -784,7 +818,7 @@ async function loadFeed() {
 }
 
 function renderFeed() {
-  if (['admin','blocked','members','profile','notifications','messages','chat'].includes(feedMode)) return;
+  if (['admin','blocked','members','profile','notifications','messages','chat','settings'].includes(feedMode)) return;
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
@@ -2381,6 +2415,252 @@ async function stopNotificationUpdates() {
     }
   }
   notificationChannel = null;
+}
+
+function accountProviderLabel() {
+  const provider = currentUser?.app_metadata?.provider || 'email';
+  const labels = {
+    email: 'Email and password',
+    google: 'Google',
+    facebook: 'Facebook',
+    apple: 'Apple',
+    github: 'GitHub'
+  };
+  return labels[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function renderAccountSettings() {
+  if (!currentUser) return;
+  els.settingsCurrentEmail.textContent = currentUser.email || 'No email available';
+  els.settingsCurrentUsername.textContent = `@${currentProfile?.username || 'member'}`;
+  els.settingsProvider.textContent = accountProviderLabel();
+}
+
+async function changeAccountEmail(event) {
+  event.preventDefault();
+  const email = els.newEmail.value.trim().toLowerCase();
+
+  if (!email) {
+    setMessage(els.changeEmailMessage, 'Enter a new email address.');
+    return;
+  }
+  if (email === String(currentUser.email || '').toLowerCase()) {
+    setMessage(els.changeEmailMessage, 'That is already your current email address.');
+    return;
+  }
+
+  els.changeEmailButton.disabled = true;
+  els.changeEmailButton.textContent = 'Updating…';
+  setMessage(els.changeEmailMessage);
+
+  try {
+    const { data, error } = await supabase.auth.updateUser({ email });
+    if (error) throw error;
+
+    currentUser = data.user || currentUser;
+    els.newEmail.value = '';
+    renderAccountSettings();
+    setMessage(
+      els.changeEmailMessage,
+      'Email update requested. Check your inbox and complete any confirmation link.',
+      true
+    );
+  } catch (error) {
+    setMessage(els.changeEmailMessage, error.message || 'Unable to update your email.');
+  } finally {
+    els.changeEmailButton.disabled = false;
+    els.changeEmailButton.textContent = 'Update email';
+  }
+}
+
+async function sendPasswordVerificationCode() {
+  els.sendPasswordCode.disabled = true;
+  els.sendPasswordCode.textContent = 'Sending…';
+  setMessage(els.changePasswordMessage);
+
+  try {
+    const { error } = await supabase.auth.reauthenticate();
+    if (error) throw error;
+    setMessage(
+      els.changePasswordMessage,
+      'Verification code sent. Check your email, enter the code above, then update your password.',
+      true
+    );
+  } catch (error) {
+    setMessage(els.changePasswordMessage, error.message || 'Unable to send a verification code.');
+  } finally {
+    els.sendPasswordCode.disabled = false;
+    els.sendPasswordCode.textContent = 'Send verification code';
+  }
+}
+
+async function changeAccountPassword(event) {
+  event.preventDefault();
+
+  const currentPassword = els.currentPassword.value;
+  const password = els.newPassword.value;
+  const confirmation = els.confirmPassword.value;
+  const nonce = els.passwordNonce.value.trim();
+
+  if (password.length < 12) {
+    setMessage(els.changePasswordMessage, 'Use at least 12 characters for the new password.');
+    return;
+  }
+  if (password !== confirmation) {
+    setMessage(els.changePasswordMessage, 'The new passwords do not match.');
+    return;
+  }
+
+  const attributes = { password };
+  if (currentPassword) attributes.current_password = currentPassword;
+  if (nonce) attributes.nonce = nonce;
+
+  els.changePasswordButton.disabled = true;
+  els.sendPasswordCode.disabled = true;
+  els.changePasswordButton.textContent = 'Updating…';
+  setMessage(els.changePasswordMessage);
+
+  try {
+    const { data, error } = await supabase.auth.updateUser(attributes);
+    if (error) throw error;
+
+    currentUser = data.user || currentUser;
+    els.currentPassword.value = '';
+    els.newPassword.value = '';
+    els.confirmPassword.value = '';
+    els.passwordNonce.value = '';
+    setMessage(els.changePasswordMessage, 'Your password was updated.', true);
+  } catch (error) {
+    const message = error.message || 'Unable to update your password.';
+    setMessage(
+      els.changePasswordMessage,
+      message.toLowerCase().includes('nonce') || message.toLowerCase().includes('reauth')
+        ? `${message} Tap “Send verification code,” then try again.`
+        : message
+    );
+  } finally {
+    els.changePasswordButton.disabled = false;
+    els.sendPasswordCode.disabled = false;
+    els.changePasswordButton.textContent = 'Update password';
+  }
+}
+
+async function signOutOnAllDevices() {
+  if (!confirm('Sign out of Khmer Together on this device and all other devices?')) return;
+
+  els.signOutEverywhere.disabled = true;
+  els.signOutEverywhere.textContent = 'Signing out…';
+  setMessage(els.signOutEverywhereMessage);
+
+  try {
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    if (error) throw error;
+  } catch (error) {
+    els.signOutEverywhere.disabled = false;
+    els.signOutEverywhere.textContent = 'Sign out on all devices';
+    setMessage(els.signOutEverywhereMessage, error.message || 'Unable to sign out all devices.');
+  }
+}
+
+function openDeleteAccountDialog() {
+  const username = currentProfile?.username || '';
+  els.deleteExpectedUsername.textContent = username;
+  els.deleteUsername.value = '';
+  els.deleteWord.value = '';
+  els.deleteUnderstanding.checked = false;
+  setMessage(els.deleteAccountMessage);
+  els.deleteAccountDialog.showModal();
+  setTimeout(() => els.deleteUsername.focus(), 0);
+}
+
+async function deleteStorageFolder(bucket, userId) {
+  let rounds = 0;
+
+  while (rounds < 50) {
+    rounds += 1;
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .list(userId, {
+        limit: 1000,
+        offset: 0,
+        sortBy: { column: 'name', order: 'asc' }
+      });
+
+    if (error) throw error;
+
+    const paths = (data || [])
+      .filter(item => item?.name && item.name !== '.emptyFolderPlaceholder')
+      .map(item => `${userId}/${item.name}`);
+
+    if (!paths.length) return;
+
+    const { error: removeError } = await supabase.storage
+      .from(bucket)
+      .remove(paths);
+
+    if (removeError) throw removeError;
+    if (paths.length < 1000) return;
+  }
+
+  throw new Error(`Too many files remain in ${bucket}. Please contact support before deleting the account.`);
+}
+
+async function permanentlyDeleteAccount(event) {
+  event.preventDefault();
+
+  const expectedUsername = currentProfile?.username || '';
+  const username = els.deleteUsername.value.trim();
+  const word = els.deleteWord.value.trim();
+
+  if (username.toLowerCase() !== expectedUsername.toLowerCase()) {
+    setMessage(els.deleteAccountMessage, 'The username does not match your account.');
+    return;
+  }
+  if (word !== 'DELETE') {
+    setMessage(els.deleteAccountMessage, 'Type DELETE exactly as shown.');
+    return;
+  }
+  if (!els.deleteUnderstanding.checked) {
+    setMessage(els.deleteAccountMessage, 'Confirm that you understand this cannot be undone.');
+    return;
+  }
+
+  els.confirmDeleteAccount.disabled = true;
+  els.confirmDeleteAccount.textContent = 'Deleting photos…';
+  setMessage(els.deleteAccountMessage, 'Removing your uploaded photos. Keep this page open.');
+
+  try {
+    await Promise.all([stopNotificationUpdates(), stopMessageUpdates()]);
+    await deleteStorageFolder('kt-post-images', currentUser.id);
+    await deleteStorageFolder('kt-profile-images', currentUser.id);
+
+    els.confirmDeleteAccount.textContent = 'Deleting account…';
+    setMessage(els.deleteAccountMessage, 'Removing your account and community data.');
+
+    const { data, error } = await supabase.rpc('kt_delete_my_account', {
+      expected_username: username
+    });
+
+    if (error) throw error;
+    if (!data?.deleted) throw new Error('The account deletion was not completed.');
+
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (_error) {
+      // The user record has already been deleted. Reloading clears client state.
+    }
+
+    location.replace('/');
+  } catch (error) {
+    els.confirmDeleteAccount.disabled = false;
+    els.confirmDeleteAccount.textContent = 'Permanently delete account';
+    setMessage(
+      els.deleteAccountMessage,
+      error.message || 'Unable to delete the account. Your account remains active.'
+    );
+    startNotificationUpdates();
+    startMessageUpdates();
+  }
 }
 
 function currentFollowingIds() {

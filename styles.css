@@ -626,3 +626,42 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
     font-weight:900;
   }
 }
+
+
+/* Account settings and account deletion */
+.account-settings-view{display:grid;gap:16px}
+.settings-page-header h2{font-size:28px;letter-spacing:-.03em;margin:6px 0 3px}
+.settings-page-header p{margin:0;color:var(--muted);font-size:13px}
+.settings-card{padding:21px}
+.settings-card-heading{display:flex;justify-content:space-between;gap:15px;margin-bottom:17px}
+.settings-card-heading h3{margin:0;font-size:18px}
+.settings-card-heading p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.account-details-list{display:grid;gap:0;margin:0}
+.account-details-list>div{display:grid;grid-template-columns:155px minmax(0,1fr);gap:15px;padding:12px 0;border-top:1px solid var(--line)}
+.account-details-list>div:first-child{border-top:0;padding-top:0}
+.account-details-list>div:last-child{padding-bottom:0}
+.account-details-list dt{color:var(--muted);font-size:11px;font-weight:800}
+.account-details-list dd{margin:0;color:var(--ink);font-size:12px;font-weight:800;overflow-wrap:anywhere}
+.settings-form{display:grid;gap:13px}
+.settings-form label{margin:0}
+.settings-two-column{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.settings-inline-actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.danger-zone-card{border-color:#efb7b2;background:linear-gradient(145deg,#fff,#fff8f7)}
+.danger-kicker{display:block;color:var(--bad);font-size:9px;font-weight:950;letter-spacing:.12em;margin-bottom:5px}
+.danger-button{background:var(--bad)!important;color:#fff!important;border-color:var(--bad)!important}
+.danger-button:hover{filter:brightness(.94)}
+.danger-modal form{padding:25px}
+.delete-warning-box{border:1px solid #efb7b2;background:#fff5f4;border-radius:13px;padding:14px 16px;margin-bottom:17px}
+.delete-warning-box strong{color:var(--bad)}
+.delete-warning-box ul{margin:8px 0 0;padding-left:19px;color:#5e3430;font-size:12px;line-height:1.55}
+.delete-understanding-row{display:flex!important;align-items:flex-start;gap:9px;font-weight:700!important;line-height:1.4}
+.delete-understanding-row input{width:18px;height:18px;margin:1px 0 0;flex:0 0 auto}
+.delete-understanding-row span{font-size:12px}
+@media(max-width:760px){
+  .settings-page-header h2{font-size:24px}
+  .settings-card{padding:17px}
+  .settings-two-column{grid-template-columns:1fr}
+  .account-details-list>div{grid-template-columns:105px minmax(0,1fr)}
+  .settings-inline-actions{display:grid;grid-template-columns:1fr}
+  .settings-inline-actions .button{width:100%}
+}
