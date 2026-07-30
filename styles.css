@@ -603,3 +603,26 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .comment-content{max-width:calc(100% - 74px)}
   .comment-owner-controls .comment-menu{right:0;left:auto}
 }
+
+
+/* Mobile and tablet sign-out access */
+.mobile-sign-out-button{
+  display:none;
+  margin-top:9px;
+  border-color:#d7dee8;
+}
+@media(max-width:760px){
+  .mobile-sign-out-button{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-height:48px;
+    margin-bottom:14px;
+    color:var(--bad);
+    border-color:#efb7b2;
+    background:#fff;
+    font-size:14px;
+    font-weight:900;
+  }
+}

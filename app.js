@@ -50,7 +50,7 @@ const els = {
   email: $('#emailInput'), password: $('#passwordInput'),
   authButton: $('#emailAuthButton'), toggleMode: $('#toggleAuthMode'),
   google: $('#googleButton'), authMessage: $('#authMessage'),
-  signOut: $('#signOutButton'), myName: $('#myName'),
+  signOut: $('#signOutButton'), mobileSignOut: $('#mobileSignOutButton'), myName: $('#myName'),
   myUsername: $('#myUsername'), myAvatar: $('#myAvatar'),
   composerAvatar: $('#composerAvatar'), feed: $('#feed'),
   loading: $('#loadingFeed'), empty: $('#emptyFeed'),
@@ -279,7 +279,9 @@ function bindEvents() {
   els.authForm.addEventListener('submit', handleEmailAuth);
   els.toggleMode.addEventListener('click', toggleAuthMode);
   els.google.addEventListener('click', signInWithGoogle);
-  els.signOut.addEventListener('click', () => supabase.auth.signOut());
+  const signOutUser = () => supabase.auth.signOut();
+  els.signOut.addEventListener('click', signOutUser);
+  els.mobileSignOut.addEventListener('click', signOutUser);
   els.refresh.addEventListener('click', loadFeed);
   $('#newPostTop').addEventListener('click', openComposer);
   $('#openComposerButton').addEventListener('click', openComposer);
