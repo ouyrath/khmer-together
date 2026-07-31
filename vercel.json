@@ -1,77 +1,22 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "builds": [
-    {
-      "src": "config-api.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "index.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "styles.css",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "app.js",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "favicon.svg",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "legal.css",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "terms.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "privacy.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "guidelines.html",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "copyright.html",
-      "use": "@vercel/static"
+  "framework": null,
+  "functions": {
+    "api/telegram.js": {
+      "maxDuration": 30
     }
-  ],
+  },
   "routes": [
     {
-      "src": "/api/config",
-      "dest": "/config-api.js"
+      "src": "/api/telegram",
+      "dest": "/api/telegram.js"
     },
     {
       "handle": "filesystem"
     },
     {
-      "src": "/(.*)",
+      "src": "/.*",
       "dest": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=()"
-        }
-      ]
     }
   ]
 }
