@@ -1261,3 +1261,135 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   }
 }
 
+/* Account Settings mobile/tablet spacing and fixed-navigation clearance */
+@media(max-width:900px){
+  html{
+    scroll-padding-top:76px;
+  }
+
+  body{
+    padding-bottom:calc(118px + env(safe-area-inset-bottom));
+  }
+
+  .app-shell{
+    padding-bottom:calc(150px + env(safe-area-inset-bottom))!important;
+  }
+
+  .account-settings-view{
+    gap:12px;
+    padding-bottom:36px;
+  }
+
+  .account-settings-view > section,
+  .account-settings-view > .settings-page-header{
+    scroll-margin-top:76px;
+  }
+
+  .settings-card{
+    padding:16px;
+  }
+
+  .settings-card-heading{
+    margin-bottom:12px;
+  }
+
+  .settings-card-heading h3{
+    font-size:17px;
+  }
+
+  .settings-card-heading p{
+    margin-top:4px;
+    line-height:1.4;
+  }
+
+  .settings-form{
+    gap:10px;
+  }
+
+  .settings-form label{
+    margin:0;
+  }
+
+  .settings-form input,
+  .settings-form textarea,
+  .settings-form select{
+    margin-top:5px;
+    padding:10px 12px;
+  }
+
+  .settings-form textarea{
+    min-height:92px;
+  }
+
+  .settings-form .form-message:empty{
+    display:none;
+  }
+
+  .settings-form .button{
+    min-height:48px;
+  }
+
+  .settings-inline-actions{
+    gap:7px;
+  }
+
+  .profile-settings-form .profile-photo-editor{
+    margin:0;
+    padding:12px;
+    gap:12px;
+  }
+
+  .profile-settings-form .profile-photo-preview{
+    width:68px;
+    height:68px;
+    font-size:20px;
+  }
+
+  .profile-settings-form .profile-photo-actions{
+    gap:5px;
+  }
+
+  .profile-settings-form .photo-upload-button{
+    min-height:42px;
+    padding:9px 12px;
+  }
+
+  .profile-settings-form .danger-text{
+    margin-top:0;
+  }
+
+  .account-details-list>div{
+    padding:10px 0;
+  }
+
+  .mobile-bottom-nav:not(.hidden){
+    min-height:64px!important;
+    padding-top:5px!important;
+  }
+
+  .mobile-nav-item{
+    min-height:50px!important;
+  }
+
+  .mobile-create-icon{
+    width:43px!important;
+    height:43px!important;
+    margin-top:-17px!important;
+  }
+}
+
+@media(max-width:520px){
+  .profile-settings-form .profile-photo-editor{
+    grid-template-columns:62px minmax(0,1fr);
+  }
+
+  .profile-settings-form .profile-photo-preview{
+    width:62px;
+    height:62px;
+  }
+
+  .settings-card{
+    padding:14px;
+  }
+}
+
