@@ -168,7 +168,6 @@ const els = {
   accountSettingsNav: $('#accountSettingsNav'),
   accountSettingsView: $('#accountSettingsView'),
   settingsCurrentEmail: $('#settingsCurrentEmail'),
-  settingsCurrentUsername: $('#settingsCurrentUsername'),
   settingsProvider: $('#settingsProvider'),
   changeEmailForm: $('#changeEmailForm'), newEmail: $('#newEmailInput'),
   changeEmailMessage: $('#changeEmailMessage'), changeEmailButton: $('#changeEmailButton'),
@@ -3577,7 +3576,6 @@ function renderAccountSettings() {
   if (!currentUser) return;
   updateMyProfileUI();
   els.settingsCurrentEmail.textContent = currentUser.email || 'No email available';
-  els.settingsCurrentUsername.textContent = `@${currentProfile?.username || 'member'}`;
   els.settingsProvider.textContent = accountProviderLabel();
 }
 
