@@ -1226,3 +1226,38 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .toast{bottom:calc(84px + env(safe-area-inset-bottom))}
   .chat-composer{bottom:calc(76px + env(safe-area-inset-bottom));z-index:8}
 }
+
+/* Profile editor displayed directly on the Account Settings page */
+.profile-settings-card{
+  scroll-margin-top:92px;
+}
+.profile-settings-form{
+  gap:14px;
+}
+.profile-settings-form .profile-photo-editor{
+  margin-bottom:2px;
+}
+.profile-settings-form > label{
+  margin:0;
+}
+.profile-settings-form .form-message{
+  margin:0;
+}
+@media(max-width:600px){
+  .profile-settings-card{
+    scroll-margin-top:74px;
+  }
+  .profile-settings-form .profile-photo-editor{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    align-items:center;
+    gap:14px;
+  }
+  .profile-settings-form .profile-photo-actions{
+    width:100%;
+  }
+  .profile-settings-form .photo-upload-button{
+    width:100%;
+  }
+}
+

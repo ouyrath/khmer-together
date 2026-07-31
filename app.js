@@ -82,7 +82,7 @@ const els = {
   publish: $('#publishButton'), imagePreviewWrap: $('#imagePreviewWrap'),
   imagePreviewGrid: $('#imagePreviewGrid'), postPhotoCount: $('#postPhotoCount'),
   removeImage: $('#removeImageButton'),
-  profileDialog: $('#profileDialog'), profileForm: $('#profileForm'),
+  profileForm: $('#profileForm'), profileSettingsCard: $('#profileSettingsCard'),
   profileName: $('#profileName'), profileUsername: $('#profileUsername'),
   profileBio: $('#profileBio'), profileMessage: $('#profileMessage'),
   saveProfile: $('#saveProfileButton'),
@@ -1012,7 +1012,17 @@ function openComposer() {
   els.postDialog.showModal();
   setTimeout(() => els.postBody.focus(), 50);
 }
-function openProfile() { updateMyProfileUI(); setMessage(els.profileMessage); els.profileDialog.showModal(); }
+function openProfile() {
+  closeMobileMoreMenu();
+  if (isDeepLinkPath()) history.pushState({}, '', '/');
+  switchView('settings');
+  updateMyProfileUI();
+  setMessage(els.profileMessage);
+  requestAnimationFrame(() => {
+    els.profileSettingsCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => els.profileName?.focus(), 350);
+  });
+}
 
 function previewProfilePhoto() {
   const file = els.profilePhotoInput.files?.[0];
@@ -1225,7 +1235,7 @@ async function saveProfile(event) {
     }
 
     updateMyProfileUI();
-    els.profileDialog.close();
+    setMessage(els.profileMessage, 'Your profile was updated successfully.', true);
     showToast('Profile updated.');
     await loadFeed();
   } catch (error) {
@@ -3565,6 +3575,7 @@ function accountProviderLabel() {
 
 function renderAccountSettings() {
   if (!currentUser) return;
+  updateMyProfileUI();
   els.settingsCurrentEmail.textContent = currentUser.email || 'No email available';
   els.settingsCurrentUsername.textContent = `@${currentProfile?.username || 'member'}`;
   els.settingsProvider.textContent = accountProviderLabel();

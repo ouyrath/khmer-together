@@ -179,6 +179,51 @@
             </dl>
           </section>
 
+          <section id="profileSettingsCard" class="card settings-card profile-settings-card">
+            <div class="settings-card-heading">
+              <div>
+                <h3>Edit profile</h3>
+                <p>Add your profile picture, display name, username, and bio.</p>
+              </div>
+            </div>
+
+            <form id="profileForm" class="settings-form profile-settings-form">
+              <section class="profile-photo-editor" aria-label="Profile picture">
+                <div id="profilePhotoPreview" class="avatar profile-photo-preview">KT</div>
+                <div class="profile-photo-actions">
+                  <label class="button ghost small photo-upload-button" for="profilePhotoInput">
+                    Choose profile picture
+                    <input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp">
+                  </label>
+                  <button id="removeProfilePhotoButton" class="text-button danger-text" type="button">Remove picture</button>
+                  <small>JPG, PNG, or WebP — maximum 5 MB.</small>
+                </div>
+              </section>
+
+              <label>
+                Display name
+                <input id="profileName" maxlength="80" required placeholder="Your full name">
+              </label>
+
+              <label>
+                Username
+                <div class="username-field">
+                  <span>@</span>
+                  <input id="profileUsername" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}" required placeholder="david_yanna">
+                </div>
+                <small>3–30 letters, numbers, or underscores.</small>
+              </label>
+
+              <label>
+                Bio
+                <textarea id="profileBio" maxlength="240" placeholder="Tell the Khmer community a little about yourself."></textarea>
+              </label>
+
+              <p id="profileMessage" class="form-message" role="status"></p>
+              <button id="saveProfileButton" class="button primary full" type="submit">Save profile</button>
+            </form>
+          </section>
+
           <section class="card settings-card">
             <div class="settings-card-heading">
               <div>
@@ -688,48 +733,6 @@
       <button id="publishButton" class="button primary full" type="submit">Publish post</button>
     </form>
   </dialog>
-
-  <dialog id="profileDialog" class="modal">
-    <form id="profileForm" method="dialog">
-      <div class="modal-header">
-        <div>
-          <h2>Edit profile</h2>
-          <p>Help the community know who you are.</p>
-        </div>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <section class="profile-photo-editor" aria-label="Profile picture">
-        <div id="profilePhotoPreview" class="avatar profile-photo-preview">KT</div>
-        <div class="profile-photo-actions">
-          <label class="button ghost small photo-upload-button" for="profilePhotoInput">
-            Choose profile picture
-            <input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp">
-          </label>
-          <button id="removeProfilePhotoButton" class="text-button danger-text" type="button">Remove picture</button>
-          <small>JPG, PNG, or WebP — maximum 5 MB.</small>
-        </div>
-      </section>
-
-      <label>
-        Display name
-        <input id="profileName" maxlength="80" required placeholder="Your full name">
-      </label>
-      <label>
-        Username
-        <div class="username-field"><span>@</span><input id="profileUsername" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}" required placeholder="david_yanna"></div>
-        <small>3–30 letters, numbers, or underscores.</small>
-      </label>
-      <label>
-        Bio
-        <textarea id="profileBio" maxlength="240" placeholder="Tell the Khmer community a little about yourself."></textarea>
-      </label>
-
-      <p id="profileMessage" class="form-message" role="status"></p>
-      <button id="saveProfileButton" class="button primary full" type="submit">Save profile</button>
-    </form>
-  </dialog>
-
 
   <dialog id="reportDialog" class="modal">
     <form id="reportForm" method="dialog">
