@@ -623,6 +623,7 @@ async function init() {
       auth: { persistSession: true, detectSessionInUrl: true, autoRefreshToken: true }
     });
     bindEvents();
+    await completeTelegramLoginFromUrl();
     const { data: { session } } = await supabase.auth.getSession();
     await handleSession(session);
     supabase.auth.onAuthStateChange(async (_event, session) => handleSession(session));
@@ -942,17 +943,51 @@ function switchView(mode, load = true, updateHistory = true) {
 }
 
 async function ensureProfile() {
-  const { data, error } = await supabase.from('kt_profiles').select('*').eq('id', currentUser.id).maybeSingle();
+  const { data, error } = await supabase
+    .from('kt_profiles')
+    .select('*')
+    .eq('id', currentUser.id)
+    .maybeSingle();
+
   if (error) throw error;
-  if (data) { currentProfile = data; return; }
+  if (data) {
+    currentProfile = data;
+    return;
+  }
 
-  const base = (currentUser.email?.split('@')[0] || 'member').replace(/[^a-zA-Z0-9_]/g,'').slice(0,18) || 'member';
-  const username = `${base}_${currentUser.id.replaceAll('-','').slice(0,5)}`;
-  const fullName = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || 'Khmer Together Member';
+  const metadata = currentUser.user_metadata || {};
+  const telegramUsername =
+    metadata.telegram_username ||
+    metadata.preferred_username ||
+    '';
+  const emailBase = currentUser.email?.split('@')[0] || '';
+  const requestedBase = telegramUsername || emailBase || 'member';
+  const base =
+    requestedBase
+      .replace(/[^a-zA-Z0-9_]/g, '')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 18) || 'member';
+  const username = `${base}_${currentUser.id.replaceAll('-', '').slice(0, 5)}`;
+  const fullName =
+    metadata.full_name ||
+    metadata.name ||
+    'Khmer Together Member';
+  const avatarUrl =
+    metadata.avatar_url ||
+    metadata.picture ||
+    null;
 
-  const result = await supabase.from('kt_profiles')
-    .insert({ id: currentUser.id, full_name: fullName, username })
-    .select('*').single();
+  const result = await supabase
+    .from('kt_profiles')
+    .insert({
+      id: currentUser.id,
+      full_name: fullName,
+      username,
+      avatar_url: avatarUrl
+    })
+    .select('*')
+    .single();
+
   if (result.error) throw result.error;
   currentProfile = result.data;
 }
@@ -1023,34 +1058,55 @@ async function signInWithGoogle() {
   }
 }
 
-async function signInWithTelegram() {
-  setMessage(els.authMessage);
-  els.telegram.disabled = true;
+function clearTelegramLoginParameters() {
+  const cleanUrl = `${location.pathname}${location.search
+    .replace(/([?&])telegram_error=[^&]*/g, '$1')
+    .replace(/[?&]$/, '')
+    .replace('?&', '?')}`;
+  history.replaceState({}, document.title, cleanUrl || '/');
+}
 
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'custom:telegram',
-      options: {
-        redirectTo: location.origin,
-        scopes: 'profile'
-      }
-    });
-    if (error) throw error;
-  } catch (error) {
-    const message = String(error?.message || '');
-    const setupMissing =
-      message.includes('custom_provider_not_found') ||
-      message.toLowerCase().includes('provider') ||
-      message.toLowerCase().includes('unsupported');
+async function completeTelegramLoginFromUrl() {
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const tokenHash = hash.get('telegram_token_hash');
+  const query = new URLSearchParams(location.search);
+  const telegramError = query.get('telegram_error');
 
+  if (telegramError) {
     setMessage(
       els.authMessage,
-      setupMissing
-        ? 'Telegram sign-in must be enabled in Supabase before members can use it.'
-        : message || 'Unable to sign in with Telegram.'
+      decodeURIComponent(telegramError) || 'Telegram sign-in was not completed.'
     );
-    els.telegram.disabled = false;
+    clearTelegramLoginParameters();
+    return;
   }
+
+  if (!tokenHash) return;
+
+  setMessage(els.authMessage, 'Finishing Telegram sign-in…');
+
+  try {
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: 'email'
+    });
+    if (error) throw error;
+
+    history.replaceState({}, document.title, location.pathname || '/');
+    setMessage(els.authMessage, 'Telegram sign-in completed.', true);
+  } catch (error) {
+    history.replaceState({}, document.title, location.pathname || '/');
+    setMessage(
+      els.authMessage,
+      error.message || 'Unable to finish Telegram sign-in.'
+    );
+  }
+}
+
+function signInWithTelegram() {
+  setMessage(els.authMessage);
+  els.telegram.disabled = true;
+  location.assign('/api/telegram');
 }
 
 function openComposer() {
@@ -3787,23 +3843,31 @@ async function stopNotificationUpdates() {
 }
 
 function accountProviderLabel() {
+  if (currentUser?.user_metadata?.auth_source === 'telegram') {
+    return 'Telegram';
+  }
+
   const provider = currentUser?.app_metadata?.provider || 'email';
   const labels = {
     email: 'Email and password',
     google: 'Google',
-    'custom:telegram': 'Telegram',
-    telegram: 'Telegram',
     facebook: 'Facebook',
     apple: 'Apple',
     github: 'GitHub'
   };
-  return labels[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+  return labels[provider] ||
+    provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
 function renderAccountSettings() {
   if (!currentUser) return;
   updateMyProfileUI();
-  els.settingsCurrentEmail.textContent = currentUser.email || 'No email available';
+
+  const isTelegram =
+    currentUser.user_metadata?.auth_source === 'telegram';
+  els.settingsCurrentEmail.textContent = isTelegram
+    ? 'Not shared by Telegram'
+    : currentUser.email || 'No email available';
   els.settingsProvider.textContent = accountProviderLabel();
 }
 
