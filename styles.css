@@ -1493,3 +1493,35 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   }
 }
 
+/* Google and Telegram login buttons */
+.auth-social-buttons{
+  display:grid;
+  gap:10px;
+}
+.button.telegram{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  border-color:#229ed9;
+  background:#229ed9;
+  color:#fff;
+  box-shadow:0 9px 22px rgba(34,158,217,.18);
+}
+.button.telegram:hover{
+  background:#168ac2;
+}
+.telegram-icon{
+  width:22px;
+  height:22px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#fff;
+  color:#229ed9;
+  font-size:13px;
+  font-weight:950;
+  transform:rotate(-18deg);
+}
+

@@ -60,9 +60,17 @@
         <h2 id="authTitle">Welcome</h2>
         <p class="muted">Sign in or create your free account.</p>
 
-        <button id="googleButton" class="button google" type="button">
-          <span class="google-icon">G</span> Continue with Google
-        </button>
+        <div class="auth-social-buttons" aria-label="Social sign in">
+          <button id="googleButton" class="button google" type="button">
+            <span class="google-icon" aria-hidden="true">G</span>
+            Continue with Google
+          </button>
+
+          <button id="telegramButton" class="button telegram" type="button">
+            <span class="telegram-icon" aria-hidden="true">➤</span>
+            Continue with Telegram
+          </button>
+        </div>
 
         <div class="divider"><span>or use email</span></div>
 

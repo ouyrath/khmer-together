@@ -71,7 +71,8 @@ const els = {
   topActions: $('#topActions'), authForm: $('#authForm'),
   email: $('#emailInput'), password: $('#passwordInput'),
   authButton: $('#emailAuthButton'), toggleMode: $('#toggleAuthMode'),
-  google: $('#googleButton'), authMessage: $('#authMessage'),
+  google: $('#googleButton'), telegram: $('#telegramButton'),
+  authMessage: $('#authMessage'),
   signOut: $('#signOutButton'), mobileSignOut: $('#mobileSignOutButton'), myName: $('#myName'),
   myUsername: $('#myUsername'), myAvatar: $('#myAvatar'),
   composerAvatar: $('#composerAvatar'), feed: $('#feed'),
@@ -638,6 +639,7 @@ function bindEvents() {
   els.authForm.addEventListener('submit', handleEmailAuth);
   els.toggleMode.addEventListener('click', toggleAuthMode);
   els.google.addEventListener('click', signInWithGoogle);
+  els.telegram.addEventListener('click', signInWithTelegram);
   const signOutUser = () => supabase.auth.signOut({ scope: 'local' });
   els.signOut.addEventListener('click', signOutUser);
   els.mobileSignOut.addEventListener('click', signOutUser);
@@ -1006,10 +1008,49 @@ function toggleAuthMode() {
 }
 
 async function signInWithGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google', options: { redirectTo: location.origin }
-  });
-  if (error) setMessage(els.authMessage, error.message);
+  setMessage(els.authMessage);
+  els.google.disabled = true;
+
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: location.origin }
+    });
+    if (error) throw error;
+  } catch (error) {
+    setMessage(els.authMessage, error.message || 'Unable to sign in with Google.');
+    els.google.disabled = false;
+  }
+}
+
+async function signInWithTelegram() {
+  setMessage(els.authMessage);
+  els.telegram.disabled = true;
+
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'custom:telegram',
+      options: {
+        redirectTo: location.origin,
+        scopes: 'profile'
+      }
+    });
+    if (error) throw error;
+  } catch (error) {
+    const message = String(error?.message || '');
+    const setupMissing =
+      message.includes('custom_provider_not_found') ||
+      message.toLowerCase().includes('provider') ||
+      message.toLowerCase().includes('unsupported');
+
+    setMessage(
+      els.authMessage,
+      setupMissing
+        ? 'Telegram sign-in must be enabled in Supabase before members can use it.'
+        : message || 'Unable to sign in with Telegram.'
+    );
+    els.telegram.disabled = false;
+  }
 }
 
 function openComposer() {
@@ -3750,6 +3791,8 @@ function accountProviderLabel() {
   const labels = {
     email: 'Email and password',
     google: 'Google',
+    'custom:telegram': 'Telegram',
+    telegram: 'Telegram',
     facebook: 'Facebook',
     apple: 'Apple',
     github: 'GitHub'
