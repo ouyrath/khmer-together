@@ -1393,3 +1393,103 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   }
 }
 
+/* Direct voice and video calls from private chat */
+.chat-call-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  color:var(--blue);
+  border-color:#bdd7eb;
+  background:#f4faff;
+}
+.chat-call-button span{font-size:13px}
+.chat-call-button strong{font-size:9px}
+.chat-call-button:hover{background:#e8f3fc}
+.chat-call-card{
+  min-width:min(330px,65vw);
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:10px;
+  align-items:center;
+  padding:11px;
+  border:1px solid #bcd8ed;
+  border-radius:13px;
+  background:linear-gradient(145deg,#f3faff,#fff);
+}
+.chat-call-card.voice{
+  border-color:#b9dfca;
+  background:linear-gradient(145deg,#f1fbf5,#fff);
+}
+.chat-call-card-icon{
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#dceefa;
+  font-size:20px;
+}
+.chat-call-card.voice .chat-call-card-icon{background:#dff3e7}
+.chat-call-card-content{min-width:0}
+.chat-call-card-content strong{
+  display:block;
+  font-size:12px;
+}
+.chat-call-card-content small{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.35;
+}
+.chat-call-card-actions{
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.chat-call-card-actions button{
+  min-height:36px;
+  border-radius:9px;
+  padding:7px 9px;
+  font-size:10px;
+  font-weight:900;
+}
+.chat-call-join{
+  border:1px solid var(--blue);
+  background:var(--blue);
+  color:#fff;
+}
+.chat-call-share{
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--ink);
+}
+.chat-call-card + .chat-message-meta{margin-top:6px}
+@media(max-width:650px){
+  .chat-header-actions{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    width:100%;
+  }
+  .chat-header-button{
+    min-height:36px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .chat-call-button strong{display:none}
+  .chat-call-button span{font-size:16px}
+  .chat-call-card{min-width:min(320px,78vw)}
+}
+@media(max-width:430px){
+  .chat-call-card{
+    min-width:72vw;
+    max-width:78vw;
+  }
+  .chat-call-card-actions{
+    grid-template-columns:1fr;
+  }
+}
+

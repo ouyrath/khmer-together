@@ -61,6 +61,8 @@ const MAX_PHOTO_TOTAL_BYTES = 30 * 1024 * 1024;
 const CHAT_AUDIO_MAX_BYTES = 15 * 1024 * 1024;
 const CHAT_AUDIO_MAX_SECONDS = 5 * 60;
 const recentCommentSubmissions = new Map();
+const CALL_MESSAGE_PREFIX = '[[KT_CALL_V1]]';
+let callButtonBusy = false;
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [], blocks: [] };
 
 const els = {
@@ -143,7 +145,10 @@ const els = {
   findMembersForMessages: $('#findMembersForMessages'), chatView: $('#chatView'),
   chatBackButton: $('#chatBackButton'), chatMemberButton: $('#chatMemberButton'),
   chatMemberAvatar: $('#chatMemberAvatar'), chatMemberName: $('#chatMemberName'),
-  chatMemberUsername: $('#chatMemberUsername'), chatReportButton: $('#chatReportButton'),
+  chatMemberUsername: $('#chatMemberUsername'),
+  chatVoiceCallButton: $('#chatVoiceCallButton'),
+  chatVideoCallButton: $('#chatVideoCallButton'),
+  chatReportButton: $('#chatReportButton'),
   chatBlockButton: $('#chatBlockButton'), chatPrivacyNote: $('#chatPrivacyNote'),
   chatBlockedNotice: $('#chatBlockedNotice'), chatLoading: $('#chatLoading'),
   chatEmpty: $('#chatEmpty'), chatMessages: $('#chatMessages'),
@@ -694,6 +699,8 @@ function bindEvents() {
   els.chatMemberButton.addEventListener('click', () => {
     if (activeChatProfile?.id) openMemberProfile(activeChatProfile.id, { returnMode: 'messages' });
   });
+  els.chatVoiceCallButton.addEventListener('click', () => startChatCall('voice'));
+  els.chatVideoCallButton.addEventListener('click', () => startChatCall('video'));
   els.chatReportButton.addEventListener('click', openConversationReportDialog);
   els.chatBlockButton.addEventListener('click', blockActiveChatMember);
   els.chatComposer.addEventListener('submit', sendChatMessage);
@@ -2209,7 +2216,181 @@ function messageAttachments(message) {
   return [];
 }
 
+function parseCallInvitation(messageOrBody) {
+  const body = typeof messageOrBody === 'string'
+    ? messageOrBody
+    : String(messageOrBody?.body || '');
+  if (!body.startsWith(CALL_MESSAGE_PREFIX)) return null;
+
+  try {
+    const invitation = JSON.parse(body.slice(CALL_MESSAGE_PREFIX.length));
+    const type = invitation?.type === 'voice' ? 'voice' : 'video';
+    const url = String(invitation?.url || '');
+
+    if (!url.startsWith('https://meet.jit.si/')) return null;
+
+    return {
+      type,
+      url,
+      room: String(invitation?.room || ''),
+      startedAt: invitation?.startedAt || null
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createCallRoomName() {
+  const conversationPart = String(activeConversation?.id || '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 18);
+  const randomPart = crypto.randomUUID().replaceAll('-', '');
+  return `KhmerTogether-${conversationPart}-${randomPart}`;
+}
+
+function callMeetingUrl(room, type) {
+  const base = `https://meet.jit.si/${encodeURIComponent(room)}`;
+  const config = type === 'voice'
+    ? '#config.startWithVideoMuted=true&config.prejoinPageEnabled=true'
+    : '#config.prejoinPageEnabled=true';
+  return `${base}${config}`;
+}
+
+function openCallLink(url) {
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!opened) {
+    copyTextToClipboard(url)
+      .then(() => showToast('Call link copied. Open it in a new browser tab.'))
+      .catch(() => showToast('Your browser blocked the call window.'));
+  }
+}
+
+async function shareCallLink(invitation) {
+  const label = invitation.type === 'voice' ? 'voice call' : 'video call';
+  const shareData = {
+    title: `Khmer Together ${label}`,
+    text: `Join my Khmer Together ${label}.`,
+    url: invitation.url
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+    }
+  }
+
+  await copyTextToClipboard(invitation.url);
+  showToast('Call link copied.');
+}
+
+function setCallButtonsBusy(busy) {
+  callButtonBusy = busy;
+  els.chatVoiceCallButton.disabled = busy || !activeChatMessagingAllowed;
+  els.chatVideoCallButton.disabled = busy || !activeChatMessagingAllowed;
+}
+
+async function startChatCall(type) {
+  if (
+    callButtonBusy ||
+    !activeConversation ||
+    !activeChatProfile ||
+    !activeChatMessagingAllowed
+  ) return;
+
+  const normalizedType = type === 'voice' ? 'voice' : 'video';
+  const room = createCallRoomName();
+  const url = callMeetingUrl(room, normalizedType);
+  const invitation = {
+    type: normalizedType,
+    room,
+    url,
+    startedAt: new Date().toISOString()
+  };
+
+  // Open immediately so mobile browsers treat it as a direct user action.
+  openCallLink(url);
+  setCallButtonsBusy(true);
+
+  try {
+    const { error } = await supabase.from('kt_messages').insert({
+      conversation_id: activeConversation.id,
+      sender_id: currentUser.id,
+      recipient_id: activeChatProfile.id,
+      body: `${CALL_MESSAGE_PREFIX}${JSON.stringify(invitation)}`,
+      attachments: []
+    });
+    if (error) throw error;
+
+    showToast(
+      normalizedType === 'voice'
+        ? 'Voice-call invitation sent.'
+        : 'Video-call invitation sent.'
+    );
+    await openConversation(activeConversation, activeChatProfile);
+  } catch (error) {
+    try {
+      await copyTextToClipboard(url);
+      showToast('The call opened, but the invitation could not be sent. Link copied.');
+    } catch {
+      showToast(error.message || 'Unable to send the call invitation.');
+    }
+  } finally {
+    setCallButtonsBusy(false);
+  }
+}
+
+function renderCallInvitation(bubble, invitation, mine) {
+  const card = document.createElement('section');
+  card.className = `chat-call-card ${invitation.type}`.trim();
+
+  const icon = document.createElement('span');
+  icon.className = 'chat-call-card-icon';
+  icon.textContent = invitation.type === 'voice' ? '📞' : '🎥';
+
+  const content = document.createElement('div');
+  content.className = 'chat-call-card-content';
+
+  const title = document.createElement('strong');
+  title.textContent = invitation.type === 'voice'
+    ? `${mine ? 'You started' : 'Incoming'} voice call`
+    : `${mine ? 'You started' : 'Incoming'} video call`;
+
+  const note = document.createElement('small');
+  note.textContent = 'Anyone who receives this private link can join the meeting.';
+
+  content.append(title, note);
+
+  const actions = document.createElement('div');
+  actions.className = 'chat-call-card-actions';
+
+  const join = document.createElement('button');
+  join.type = 'button';
+  join.className = 'chat-call-join';
+  join.textContent = mine ? 'Open call' : 'Join call';
+  join.addEventListener('click', () => openCallLink(invitation.url));
+
+  const share = document.createElement('button');
+  share.type = 'button';
+  share.className = 'chat-call-share';
+  share.textContent = 'Share link';
+  share.addEventListener('click', () => shareCallLink(invitation));
+
+  actions.append(join, share);
+  card.append(icon, content, actions);
+  bubble.appendChild(card);
+}
+
 function messagePreviewText(message) {
+  const callInvitation = parseCallInvitation(message);
+  if (callInvitation) {
+    return callInvitation.type === 'voice'
+      ? '📞 Voice-call invitation'
+      : '🎥 Video-call invitation';
+  }
+
   const body = String(message?.body || '').trim();
   const attachments = messageAttachments(message);
   const imageCount = attachments.filter(item => item.type === 'image').length;
@@ -2831,6 +3012,7 @@ function updateChatAvailability() {
   els.chatComposer.classList.toggle('hidden', !activeChatMessagingAllowed);
   els.chatBlockButton.textContent = activeChatMessagingAllowed ? 'Block' : 'Blocked';
   els.chatBlockButton.disabled = !activeChatMessagingAllowed;
+  setCallButtonsBusy(callButtonBusy);
   if (!activeChatMessagingAllowed) clearChatAttachmentDraft();
 }
 
@@ -2855,7 +3037,10 @@ function renderChatMessages() {
       renderPrivateMessageAttachments(attachment, message);
     }
 
-    if (message.body) {
+    const callInvitation = parseCallInvitation(message);
+    if (callInvitation) {
+      renderCallInvitation(bubble, callInvitation, mine);
+    } else if (message.body) {
       const body = document.createElement('p');
       body.textContent = message.body;
       bubble.appendChild(body);

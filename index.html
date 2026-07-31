@@ -330,12 +330,20 @@
               </span>
             </button>
             <div class="chat-header-actions">
+              <button id="chatVoiceCallButton" class="chat-header-button chat-call-button" type="button" aria-label="Start voice call" title="Start voice call">
+                <span aria-hidden="true">📞</span><strong>Voice</strong>
+              </button>
+              <button id="chatVideoCallButton" class="chat-header-button chat-call-button" type="button" aria-label="Start video call" title="Start video call">
+                <span aria-hidden="true">🎥</span><strong>Video</strong>
+              </button>
               <button id="chatReportButton" class="chat-header-button" type="button">Report</button>
               <button id="chatBlockButton" class="chat-header-button danger" type="button">Block</button>
             </div>
           </div>
 
-          <div id="chatPrivacyNote" class="chat-privacy-note">Only you and this member can read these messages.</div>
+          <div id="chatPrivacyNote" class="chat-privacy-note">
+            Only you and this member can read these messages. Call invitations use a private random meeting link.
+          </div>
           <div id="chatBlockedNotice" class="chat-blocked-notice card hidden">
             Messaging is unavailable because one of you has blocked the other. You can still read the conversation history.
           </div>
