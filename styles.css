@@ -735,3 +735,121 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   .chat-voice-attachment{width:75vw}
   .chat-media-note{font-size:7px}
 }
+
+
+/* Up to five photos in feed posts and private messages */
+.multi-image-preview-wrap{margin-bottom:16px}
+.multi-image-preview-heading{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px
+}
+.multi-image-preview-heading strong{font-size:11px}
+.multi-image-preview-grid,.post-edit-multi-grid,.chat-image-draft-grid{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px
+}
+.multi-image-preview-item,.post-edit-multi-item,.chat-image-draft-item{
+  position:relative;overflow:hidden;border-radius:11px;background:#edf2f7;aspect-ratio:1
+}
+.multi-image-preview-item img,.post-edit-multi-item img,.chat-image-draft-item img{
+  display:block;width:100%;height:100%;object-fit:cover
+}
+.multi-image-remove,.chat-image-draft-item button{
+  position:absolute;top:5px;right:5px;width:27px;height:27px;border:0;border-radius:50%;
+  display:grid;place-items:center;background:rgba(0,0,0,.72);color:#fff;font-size:18px;
+  line-height:1;padding:0
+}
+.post-gallery,.chat-private-gallery{
+  display:grid;gap:3px;background:#eef2f6;overflow:hidden
+}
+.post-gallery[data-count="1"],.chat-private-gallery[data-count="1"]{
+  grid-template-columns:1fr
+}
+.post-gallery[data-count="2"],.chat-private-gallery[data-count="2"]{
+  grid-template-columns:1fr 1fr
+}
+.post-gallery[data-count="3"],.chat-private-gallery[data-count="3"]{
+  grid-template-columns:1.35fr .85fr;grid-template-rows:1fr 1fr
+}
+.post-gallery[data-count="4"],.chat-private-gallery[data-count="4"]{
+  grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr
+}
+.post-gallery[data-count="5"],.chat-private-gallery[data-count="5"]{
+  grid-template-columns:1.3fr .85fr .85fr;grid-template-rows:1fr 1fr
+}
+.post-gallery-item,.chat-private-gallery-item{
+  min-width:0;min-height:0;border:0;padding:0;background:#e7edf4;overflow:hidden
+}
+.post-gallery-item img,.chat-private-gallery-item img{
+  display:block;width:100%;height:100%;object-fit:cover
+}
+.post-gallery[data-count="1"] .post-gallery-item{height:min(620px,72vw)}
+.post-gallery[data-count="2"] .post-gallery-item{height:min(520px,56vw)}
+.post-gallery[data-count="3"] .post-gallery-item:first-child{
+  grid-row:1/3;height:min(560px,60vw)
+}
+.post-gallery[data-count="4"] .post-gallery-item{height:min(290px,31vw)}
+.post-gallery[data-count="5"] .post-gallery-item:first-child{
+  grid-row:1/3;height:min(560px,60vw)
+}
+.post-gallery[data-count="5"] .post-gallery-item:not(:first-child){
+  height:min(278px,29.5vw)
+}
+.post-edit-multi-grid{margin-top:9px}
+.post-edit-multi-grid .post-edit-image-empty{
+  grid-column:1/-1;min-height:130px;border:1px dashed #b8c6d7;border-radius:13px
+}
+.multi-chat-image-draft{display:block;flex:1}
+.chat-image-draft-title{display:flex;justify-content:space-between;margin-bottom:7px}
+.chat-image-draft-grid{grid-template-columns:repeat(5,minmax(48px,1fr))}
+.chat-image-draft-item{aspect-ratio:1}
+.chat-private-gallery{border-radius:11px;width:min(430px,65vw)}
+.chat-private-gallery[data-count="1"] .chat-private-gallery-item{height:min(390px,56vw)}
+.chat-private-gallery[data-count="2"] .chat-private-gallery-item{height:min(260px,35vw)}
+.chat-private-gallery[data-count="3"] .chat-private-gallery-item:first-child{
+  grid-row:1/3;height:min(350px,45vw)
+}
+.chat-private-gallery[data-count="4"] .chat-private-gallery-item{height:min(190px,26vw)}
+.chat-private-gallery[data-count="5"] .chat-private-gallery-item:first-child{
+  grid-row:1/3;height:min(350px,45vw)
+}
+.chat-private-gallery[data-count="5"] .chat-private-gallery-item:not(:first-child){
+  height:min(173px,22vw)
+}
+.photo-viewer-dialog{
+  width:100vw;max-width:none;height:100vh;max-height:none;margin:0;border:0;padding:0;
+  background:rgba(5,10,18,.96);color:#fff
+}
+.photo-viewer-dialog::backdrop{background:#050a12}
+.photo-viewer-dialog figure{
+  width:100%;height:100%;margin:0;display:grid;place-items:center;padding:48px 70px
+}
+.photo-viewer-dialog img{
+  max-width:100%;max-height:calc(100vh - 105px);object-fit:contain
+}
+.photo-viewer-dialog figcaption{
+  position:fixed;bottom:15px;left:50%;transform:translateX(-50%);
+  font-size:11px;color:#d8e0eb
+}
+.photo-viewer-close,.photo-viewer-nav{
+  position:fixed;z-index:2;border:0;background:rgba(255,255,255,.14);color:#fff;
+  display:grid;place-items:center;border-radius:50%
+}
+.photo-viewer-close{right:17px;top:17px;width:43px;height:43px;font-size:29px}
+.photo-viewer-nav{top:50%;transform:translateY(-50%);width:48px;height:48px;font-size:38px}
+.photo-viewer-nav.previous{left:14px}.photo-viewer-nav.next{right:14px}
+@media(max-width:650px){
+  .multi-image-preview-grid,.post-edit-multi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chat-image-draft-grid{grid-template-columns:repeat(3,minmax(55px,1fr))}
+  .post-gallery[data-count="3"],.post-gallery[data-count="5"],
+  .chat-private-gallery[data-count="3"],.chat-private-gallery[data-count="5"]{
+    grid-template-columns:1fr 1fr
+  }
+  .post-gallery[data-count="5"] .post-gallery-item:first-child,
+  .chat-private-gallery[data-count="5"] .chat-private-gallery-item:first-child{
+    grid-column:1/3;grid-row:auto;height:55vw
+  }
+  .post-gallery[data-count="5"] .post-gallery-item:not(:first-child){height:34vw}
+  .chat-private-gallery[data-count="5"] .chat-private-gallery-item:not(:first-child){height:31vw}
+  .photo-viewer-dialog figure{padding:55px 10px}
+  .photo-viewer-nav{width:40px;height:40px;font-size:31px;background:rgba(0,0,0,.52)}
+  .photo-viewer-nav.previous{left:5px}.photo-viewer-nav.next{right:5px}
+}

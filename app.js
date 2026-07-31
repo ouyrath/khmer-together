@@ -8,7 +8,7 @@ let currentUser = null;
 let currentProfile = null;
 let authMode = 'signin';
 let feedMode = 'all';
-let selectedImage = null;
+let selectedPostImages = [];
 let selectedProfileImage = null;
 let removeProfileImageRequested = false;
 let reportingPostId = null;
@@ -41,8 +41,9 @@ let messageChannel = null;
 let messagePollTimer = null;
 let reportingConversationId = null;
 let reportingConversationMember = null;
-let selectedChatImageFile = null;
-let selectedChatImagePreviewUrl = null;
+let selectedChatImages = [];
+let photoViewerUrls = [];
+let photoViewerIndex = 0;
 let recordedChatAudioBlob = null;
 let recordedChatAudioPreviewUrl = null;
 let recordedChatAudioDuration = 0;
@@ -54,6 +55,8 @@ let chatRecordingTimer = null;
 let cancelCurrentChatRecording = false;
 const messageAttachmentUrlCache = new Map();
 const CHAT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const MAX_PHOTOS_PER_ITEM = 5;
+const MAX_PHOTO_TOTAL_BYTES = 30 * 1024 * 1024;
 const CHAT_AUDIO_MAX_BYTES = 15 * 1024 * 1024;
 const CHAT_AUDIO_MAX_SECONDS = 5 * 60;
 const recentCommentSubmissions = new Map();
@@ -74,7 +77,8 @@ const els = {
   postForm: $('#postForm'), postBody: $('#postBody'),
   postImage: $('#postImage'), postMessage: $('#postMessage'),
   publish: $('#publishButton'), imagePreviewWrap: $('#imagePreviewWrap'),
-  imagePreview: $('#imagePreview'), removeImage: $('#removeImageButton'),
+  imagePreviewGrid: $('#imagePreviewGrid'), postPhotoCount: $('#postPhotoCount'),
+  removeImage: $('#removeImageButton'),
   profileDialog: $('#profileDialog'), profileForm: $('#profileForm'),
   profileName: $('#profileName'), profileUsername: $('#profileUsername'),
   profileBio: $('#profileBio'), profileMessage: $('#profileMessage'),
@@ -144,7 +148,7 @@ const els = {
   sendMessageButton: $('#sendMessageButton'), chatMessageStatus: $('#chatMessageStatus'),
   chatPhotoInput: $('#chatPhotoInput'), chatPhotoButton: $('#chatPhotoButton'),
   chatVoiceButton: $('#chatVoiceButton'), chatAttachmentPreview: $('#chatAttachmentPreview'),
-  chatImageDraft: $('#chatImageDraft'), chatImageDraftPreview: $('#chatImageDraftPreview'),
+  chatImageDraft: $('#chatImageDraft'), chatImageDraftGrid: $('#chatImageDraftGrid'),
   chatImageDraftInfo: $('#chatImageDraftInfo'), chatAudioDraft: $('#chatAudioDraft'),
   chatAudioDraftPlayer: $('#chatAudioDraftPlayer'), chatAudioDraftInfo: $('#chatAudioDraftInfo'),
   removeChatAttachment: $('#removeChatAttachmentButton'),
@@ -176,7 +180,10 @@ const els = {
   deleteUsername: $('#deleteUsernameInput'), deleteWord: $('#deleteWordInput'),
   deleteUnderstanding: $('#deleteUnderstandingCheckbox'),
   deleteAccountMessage: $('#deleteAccountMessage'),
-  confirmDeleteAccount: $('#confirmDeleteAccountButton')
+  confirmDeleteAccount: $('#confirmDeleteAccountButton'),
+  photoViewerDialog: $('#photoViewerDialog'), photoViewerImage: $('#photoViewerImage'),
+  photoViewerCaption: $('#photoViewerCaption'), closePhotoViewer: $('#closePhotoViewerButton'),
+  previousPhoto: $('#previousPhotoButton'), nextPhoto: $('#nextPhotoButton')
 };
 
 function initials(name = 'KT') {
@@ -248,6 +255,90 @@ async function handleLocationRoute() {
   await openMemberProfile(profile.id, {
     pushHistory: false,
     returnMode: 'all'
+  });
+}
+
+function allowedPhotoType(file) {
+  return ['image/jpeg','image/png','image/gif','image/webp'].includes(
+    String(file?.type || '').toLowerCase()
+  );
+}
+
+function uniqueSelectedFiles(existingEntries, files) {
+  const existingKeys = new Set(existingEntries.map(entry =>
+    `${entry.file.name}:${entry.file.size}:${entry.file.lastModified}`
+  ));
+  return files.filter(file => {
+    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+}
+
+function postImageUrls(post) {
+  const arrayUrls = Array.isArray(post?.image_urls) ? post.image_urls : [];
+  return [...new Set([
+    ...arrayUrls,
+    ...(post?.image_url ? [post.image_url] : [])
+  ].filter(Boolean))].slice(0, MAX_PHOTOS_PER_ITEM);
+}
+
+function openPhotoViewer(urls, index = 0) {
+  photoViewerUrls = [...new Set((urls || []).filter(Boolean))];
+  if (!photoViewerUrls.length) return;
+  photoViewerIndex = Math.max(0, Math.min(index, photoViewerUrls.length - 1));
+  updatePhotoViewer();
+  els.photoViewerDialog.showModal();
+}
+
+function updatePhotoViewer() {
+  const url = photoViewerUrls[photoViewerIndex];
+  if (!url) return;
+  els.photoViewerImage.src = url;
+  els.photoViewerCaption.textContent =
+    `Photo ${photoViewerIndex + 1} of ${photoViewerUrls.length}`;
+  const multiple = photoViewerUrls.length > 1;
+  els.previousPhoto.classList.toggle('hidden', !multiple);
+  els.nextPhoto.classList.toggle('hidden', !multiple);
+}
+
+function movePhotoViewer(direction) {
+  if (photoViewerUrls.length < 2) return;
+  photoViewerIndex =
+    (photoViewerIndex + direction + photoViewerUrls.length) % photoViewerUrls.length;
+  updatePhotoViewer();
+}
+
+function closePhotoViewer() {
+  if (els.photoViewerDialog.open) els.photoViewerDialog.close();
+  els.photoViewerImage.removeAttribute('src');
+  photoViewerUrls = [];
+  photoViewerIndex = 0;
+}
+
+function renderPhotoGallery(container, urls, classPrefix = 'post') {
+  container.innerHTML = '';
+  const photos = [...new Set((urls || []).filter(Boolean))]
+    .slice(0, MAX_PHOTOS_PER_ITEM);
+  container.classList.toggle('hidden', !photos.length);
+  container.dataset.count = String(photos.length);
+
+  photos.forEach((url, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `${classPrefix}-gallery-item`;
+    button.setAttribute('aria-label', `Open photo ${index + 1} of ${photos.length}`);
+
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = `Photo ${index + 1} of ${photos.length}`;
+    image.loading = 'lazy';
+    image.referrerPolicy = 'no-referrer';
+
+    button.appendChild(image);
+    button.addEventListener('click', () => openPhotoViewer(photos, index));
+    container.appendChild(button);
   });
 }
 
@@ -391,6 +482,17 @@ function bindEvents() {
   els.signOutEverywhere.addEventListener('click', signOutOnAllDevices);
   els.openDeleteAccount.addEventListener('click', openDeleteAccountDialog);
   els.deleteAccountForm.addEventListener('submit', permanentlyDeleteAccount);
+  els.closePhotoViewer.addEventListener('click', closePhotoViewer);
+  els.previousPhoto.addEventListener('click', () => movePhotoViewer(-1));
+  els.nextPhoto.addEventListener('click', () => movePhotoViewer(1));
+  els.photoViewerDialog.addEventListener('click', event => {
+    if (event.target === els.photoViewerDialog) closePhotoViewer();
+  });
+  document.addEventListener('keydown', event => {
+    if (!els.photoViewerDialog.open) return;
+    if (event.key === 'ArrowLeft') movePhotoViewer(-1);
+    if (event.key === 'ArrowRight') movePhotoViewer(1);
+  });
   $$('[data-notification-filter]').forEach(button => {
     button.addEventListener('click', () => {
       notificationFilter = button.dataset.notificationFilter;
@@ -668,48 +770,121 @@ function removeProfilePhotoPreview() {
   setMessage(els.profileMessage, 'The picture will be removed after you tap Save profile.', true);
 }
 
+function renderSelectedPostImages() {
+  els.imagePreviewGrid.innerHTML = '';
+  els.imagePreviewWrap.classList.toggle('hidden', !selectedPostImages.length);
+  els.postPhotoCount.textContent =
+    `${selectedPostImages.length} of ${MAX_PHOTOS_PER_ITEM} photos selected`;
+
+  selectedPostImages.forEach((entry, index) => {
+    const item = document.createElement('div');
+    item.className = 'multi-image-preview-item';
+
+    const image = document.createElement('img');
+    image.src = entry.previewUrl;
+    image.alt = `Selected photo ${index + 1}`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'multi-image-remove';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', `Remove selected photo ${index + 1}`);
+    remove.addEventListener('click', () => {
+      URL.revokeObjectURL(entry.previewUrl);
+      selectedPostImages.splice(index, 1);
+      renderSelectedPostImages();
+    });
+
+    item.append(image, remove);
+    els.imagePreviewGrid.appendChild(item);
+  });
+}
+
 function previewImage() {
-  const file = els.postImage.files?.[0];
-  if (!file) return clearSelectedImage();
-  if (file.size > 8*1024*1024) {
-    els.postImage.value = '';
-    return setMessage(els.postMessage, 'The photo must be 8 MB or smaller.');
+  const chosen = [...(els.postImage.files || [])];
+  els.postImage.value = '';
+  if (!chosen.length) return;
+
+  const invalid = chosen.find(file => !allowedPhotoType(file));
+  if (invalid) {
+    return setMessage(els.postMessage, 'Choose only JPG, PNG, GIF, or WebP photos.');
   }
-  selectedImage = file;
-  els.imagePreview.src = URL.createObjectURL(file);
-  els.imagePreviewWrap.classList.remove('hidden');
+
+  const tooLarge = chosen.find(file => file.size > CHAT_IMAGE_MAX_BYTES);
+  if (tooLarge) {
+    return setMessage(els.postMessage, 'Each photo must be 10 MB or smaller.');
+  }
+
+  const additions = uniqueSelectedFiles(selectedPostImages, chosen);
+  if (selectedPostImages.length + additions.length > MAX_PHOTOS_PER_ITEM) {
+    return setMessage(els.postMessage, 'You can select up to five photos.');
+  }
+
+  const totalBytes = [
+    ...selectedPostImages.map(entry => entry.file),
+    ...additions
+  ].reduce((sum, file) => sum + file.size, 0);
+
+  if (totalBytes > MAX_PHOTO_TOTAL_BYTES) {
+    return setMessage(els.postMessage, 'The five photos must total 30 MB or less.');
+  }
+
+  additions.forEach(file => {
+    selectedPostImages.push({ file, previewUrl: URL.createObjectURL(file) });
+  });
+  setMessage(els.postMessage);
+  renderSelectedPostImages();
 }
 
 function clearSelectedImage() {
-  if (els.imagePreview.src) URL.revokeObjectURL(els.imagePreview.src);
-  selectedImage = null;
+  selectedPostImages.forEach(entry => URL.revokeObjectURL(entry.previewUrl));
+  selectedPostImages = [];
   els.postImage.value = '';
-  els.imagePreview.removeAttribute('src');
-  els.imagePreviewWrap.classList.add('hidden');
+  renderSelectedPostImages();
+}
+
+async function uploadPostPhoto(file) {
+  const extension = extensionForAttachment('image', file.type);
+  const path = `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await supabase.storage
+    .from('kt-post-images')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type
+    });
+  if (error) throw error;
+  return {
+    path,
+    url: supabase.storage.from('kt-post-images').getPublicUrl(path).data.publicUrl
+  };
 }
 
 async function createPost(event) {
   event.preventDefault();
   const body = els.postBody.value.trim();
-  if (!body && !selectedImage) return setMessage(els.postMessage, 'Write a message or add a photo.');
+  if (!body && !selectedPostImages.length) {
+    return setMessage(els.postMessage, 'Write a message or add at least one photo.');
+  }
 
   els.publish.disabled = true;
-  els.publish.textContent = 'Publishing…';
+  els.publish.textContent = selectedPostImages.length ? 'Uploading photos…' : 'Publishing…';
   setMessage(els.postMessage);
+  const uploads = [];
 
   try {
-    let imageUrl = null;
-    if (selectedImage) {
-      const extension = selectedImage.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from('kt-post-images').upload(path, selectedImage, { cacheControl:'3600', upsert:false });
-      if (uploadError) throw uploadError;
-      imageUrl = supabase.storage.from('kt-post-images').getPublicUrl(path).data.publicUrl;
+    for (let index = 0; index < selectedPostImages.length; index += 1) {
+      els.publish.textContent = `Uploading ${index + 1} of ${selectedPostImages.length}…`;
+      uploads.push(await uploadPostPhoto(selectedPostImages[index].file));
     }
 
+    els.publish.textContent = 'Publishing…';
+    const imageUrls = uploads.map(item => item.url);
     const { error } = await supabase.from('kt_posts').insert({
-      user_id: currentUser.id, body, image_url: imageUrl
+      user_id: currentUser.id,
+      body,
+      image_url: imageUrls[0] || null,
+      image_urls: imageUrls
     });
     if (error) throw error;
 
@@ -719,6 +894,11 @@ async function createPost(event) {
     showToast('Your post was published.');
     await loadFeed();
   } catch (error) {
+    if (uploads.length) {
+      await supabase.storage
+        .from('kt-post-images')
+        .remove(uploads.map(item => item.path));
+    }
     setMessage(els.postMessage, error.message || 'Unable to publish this post.');
   } finally {
     els.publish.disabled = false;
@@ -899,11 +1079,8 @@ function renderPost(post, followingIds) {
   $('.post-body',node).textContent = post.body || '';
   $('.post-body',node).classList.toggle('hidden', !post.body);
 
-  const image = $('.post-image',node);
-  if (post.image_url) {
-    image.src = post.image_url;
-    image.classList.remove('hidden');
-  }
+  const postGallery = $('.post-gallery',node);
+  renderPhotoGallery(postGallery, postImageUrls(post), 'post');
 
   $('.like-count',node).textContent = `${postLikes.length} ${postLikes.length === 1 ? 'like':'likes'}`;
   $('.comment-count',node).textContent = `${postComments.length} ${postComments.length === 1 ? 'comment':'comments'}`;
@@ -1008,20 +1185,25 @@ function beginEditPost(post, postNode) {
   if (postNode.querySelector('.post-edit-form')) return;
 
   const bodyElement = $('.post-body', postNode);
-  const imageElement = $('.post-image', postNode);
-
-  let selectedEditImage = null;
-  let removeImageRequested = false;
-  let previewObjectUrl = null;
+  const galleryElement = $('.post-gallery', postNode);
+  const originalUrls = postImageUrls(post);
+  let workingItems = originalUrls.map(url => ({
+    kind: 'existing',
+    url,
+    id: crypto.randomUUID()
+  }));
+  let newPreviewUrls = [];
 
   bodyElement.classList.add('hidden');
-  imageElement.classList.add('hidden');
+  galleryElement.classList.add('hidden');
 
   const form = document.createElement('form');
   form.className = 'post-edit-form';
 
   const textLabel = document.createElement('label');
-  textLabel.textContent = post.image_url ? 'Edit post text or photo caption' : 'Edit post text';
+  textLabel.textContent = originalUrls.length
+    ? 'Edit post text or photo caption'
+    : 'Edit post text';
 
   const textarea = document.createElement('textarea');
   textarea.className = 'post-edit-textarea';
@@ -1034,51 +1216,43 @@ function beginEditPost(post, postNode) {
   const mediaSection = document.createElement('section');
   mediaSection.className = 'post-edit-media';
 
-  const mediaHeading = document.createElement('div');
-  mediaHeading.className = 'post-edit-media-heading';
-  const mediaTitle = document.createElement('strong');
-  mediaTitle.textContent = 'Photo';
-  const mediaStatus = document.createElement('span');
-  mediaStatus.className = 'post-edit-media-status';
-  mediaHeading.append(mediaTitle, mediaStatus);
+  const heading = document.createElement('div');
+  heading.className = 'post-edit-media-heading';
+  const title = document.createElement('strong');
+  title.textContent = 'Photos';
+  const status = document.createElement('span');
+  status.className = 'post-edit-media-status';
+  heading.append(title, status);
 
-  const preview = document.createElement('div');
-  preview.className = 'post-edit-image-preview';
-
-  const previewImage = document.createElement('img');
-  previewImage.alt = 'Post photo preview';
-
-  const emptyPreview = document.createElement('div');
-  emptyPreview.className = 'post-edit-image-empty';
-  emptyPreview.innerHTML = '<span>＋</span><strong>No photo</strong>';
-
-  preview.append(previewImage, emptyPreview);
+  const grid = document.createElement('div');
+  grid.className = 'post-edit-multi-grid';
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
+  fileInput.multiple = true;
   fileInput.accept = 'image/jpeg,image/png,image/gif,image/webp';
   fileInput.className = 'post-edit-file-input';
 
   const mediaButtons = document.createElement('div');
   mediaButtons.className = 'post-edit-media-buttons';
 
-  const choosePhotoButton = document.createElement('button');
-  choosePhotoButton.type = 'button';
-  choosePhotoButton.className = 'post-edit-photo-button';
-  choosePhotoButton.textContent = post.image_url ? 'Replace photo' : 'Add photo';
+  const addButton = document.createElement('button');
+  addButton.type = 'button';
+  addButton.className = 'post-edit-photo-button';
+  addButton.textContent = 'Add photos';
 
-  const removePhotoButton = document.createElement('button');
-  removePhotoButton.type = 'button';
-  removePhotoButton.className = 'post-edit-photo-button danger';
-  removePhotoButton.textContent = 'Remove photo';
+  const removeAllButton = document.createElement('button');
+  removeAllButton.type = 'button';
+  removeAllButton.className = 'post-edit-photo-button danger';
+  removeAllButton.textContent = 'Remove all';
 
-  const keepOriginalButton = document.createElement('button');
-  keepOriginalButton.type = 'button';
-  keepOriginalButton.className = 'post-edit-photo-button';
-  keepOriginalButton.textContent = 'Keep original photo';
+  const resetButton = document.createElement('button');
+  resetButton.type = 'button';
+  resetButton.className = 'post-edit-photo-button';
+  resetButton.textContent = 'Reset photos';
 
-  mediaButtons.append(choosePhotoButton, removePhotoButton, keepOriginalButton);
-  mediaSection.append(mediaHeading, preview, fileInput, mediaButtons);
+  mediaButtons.append(addButton, removeAllButton, resetButton);
+  mediaSection.append(heading, grid, fileInput, mediaButtons);
   form.append(textLabel, mediaSection);
 
   const actions = document.createElement('div');
@@ -1096,94 +1270,131 @@ function beginEditPost(post, postNode) {
 
   actions.append(cancelButton, saveButton);
   form.appendChild(actions);
-  postNode.insertBefore(form, imageElement);
+  postNode.insertBefore(form, galleryElement);
 
-  function revokePreviewUrl() {
-    if (previewObjectUrl) {
-      URL.revokeObjectURL(previewObjectUrl);
-      previewObjectUrl = null;
-    }
+  function revokeNewPreviewUrls() {
+    newPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+    newPreviewUrls = [];
   }
 
-  function effectivePhotoUrl() {
-    if (selectedEditImage && previewObjectUrl) return previewObjectUrl;
-    if (removeImageRequested) return null;
-    return post.image_url || null;
+  function currentUrlsForComparison() {
+    return workingItems
+      .filter(item => item.kind === 'existing')
+      .map(item => item.url);
   }
 
-  function updatePhotoEditor() {
-    const url = effectivePhotoUrl();
-    previewImage.classList.toggle('hidden', !url);
-    emptyPreview.classList.toggle('hidden', Boolean(url));
-
-    if (url) previewImage.src = url;
-    else previewImage.removeAttribute('src');
-
-    if (selectedEditImage) {
-      mediaStatus.textContent = 'New photo selected';
-    } else if (removeImageRequested && post.image_url) {
-      mediaStatus.textContent = 'Photo will be removed';
-    } else if (post.image_url) {
-      mediaStatus.textContent = 'Current photo';
-    } else {
-      mediaStatus.textContent = 'No photo';
-    }
-
-    choosePhotoButton.textContent = url ? 'Replace photo' : 'Add photo';
-    removePhotoButton.classList.toggle('hidden', !url);
-    keepOriginalButton.classList.toggle(
+  function renderEditorPhotos() {
+    grid.innerHTML = '';
+    status.textContent = `${workingItems.length} of ${MAX_PHOTOS_PER_ITEM} photos`;
+    addButton.disabled = workingItems.length >= MAX_PHOTOS_PER_ITEM;
+    removeAllButton.classList.toggle('hidden', !workingItems.length);
+    resetButton.classList.toggle(
       'hidden',
-      !post.image_url || (!selectedEditImage && !removeImageRequested)
+      JSON.stringify(currentUrlsForComparison()) === JSON.stringify(originalUrls)
+      && !workingItems.some(item => item.kind === 'new')
     );
+
+    if (!workingItems.length) {
+      const empty = document.createElement('div');
+      empty.className = 'post-edit-image-empty';
+      empty.innerHTML = '<span>＋</span><strong>No photos</strong>';
+      grid.appendChild(empty);
+      return;
+    }
+
+    workingItems.forEach((item, index) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'post-edit-multi-item';
+
+      const image = document.createElement('img');
+      image.src = item.kind === 'existing' ? item.url : item.previewUrl;
+      image.alt = `Post photo ${index + 1}`;
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'multi-image-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `Remove photo ${index + 1}`);
+      remove.addEventListener('click', () => {
+        if (item.kind === 'new') {
+          URL.revokeObjectURL(item.previewUrl);
+          newPreviewUrls = newPreviewUrls.filter(url => url !== item.previewUrl);
+        }
+        workingItems.splice(index, 1);
+        renderEditorPhotos();
+      });
+
+      wrap.append(image, remove);
+      grid.appendChild(wrap);
+    });
   }
 
-  choosePhotoButton.addEventListener('click', () => fileInput.click());
+  addButton.addEventListener('click', () => fileInput.click());
 
   fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
+    const files = [...(fileInput.files || [])];
+    fileInput.value = '';
+    if (!files.length) return;
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      fileInput.value = '';
-      showToast('Choose a JPG, PNG, GIF, or WebP photo.');
+    if (files.some(file => !allowedPhotoType(file))) {
+      showToast('Choose only JPG, PNG, GIF, or WebP photos.');
+      return;
+    }
+    if (files.some(file => file.size > CHAT_IMAGE_MAX_BYTES)) {
+      showToast('Each photo must be 10 MB or smaller.');
+      return;
+    }
+    if (workingItems.length + files.length > MAX_PHOTOS_PER_ITEM) {
+      showToast('A post can contain up to five photos.');
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      fileInput.value = '';
-      showToast('The photo must be 8 MB or smaller.');
+    const existingNewBytes = workingItems
+      .filter(item => item.kind === 'new')
+      .reduce((sum, item) => sum + item.file.size, 0);
+    const incomingBytes = files.reduce((sum, file) => sum + file.size, 0);
+    if (existingNewBytes + incomingBytes > MAX_PHOTO_TOTAL_BYTES) {
+      showToast('Newly selected photos must total 30 MB or less.');
       return;
     }
 
-    revokePreviewUrl();
-    selectedEditImage = file;
-    removeImageRequested = false;
-    previewObjectUrl = URL.createObjectURL(file);
-    updatePhotoEditor();
+    files.forEach(file => {
+      const previewUrl = URL.createObjectURL(file);
+      newPreviewUrls.push(previewUrl);
+      workingItems.push({
+        kind: 'new',
+        file,
+        previewUrl,
+        id: crypto.randomUUID()
+      });
+    });
+    renderEditorPhotos();
   });
 
-  removePhotoButton.addEventListener('click', () => {
-    revokePreviewUrl();
-    selectedEditImage = null;
-    removeImageRequested = true;
-    fileInput.value = '';
-    updatePhotoEditor();
+  removeAllButton.addEventListener('click', () => {
+    workingItems
+      .filter(item => item.kind === 'new')
+      .forEach(item => URL.revokeObjectURL(item.previewUrl));
+    newPreviewUrls = [];
+    workingItems = [];
+    renderEditorPhotos();
   });
 
-  keepOriginalButton.addEventListener('click', () => {
-    revokePreviewUrl();
-    selectedEditImage = null;
-    removeImageRequested = false;
-    fileInput.value = '';
-    updatePhotoEditor();
+  resetButton.addEventListener('click', () => {
+    revokeNewPreviewUrls();
+    workingItems = originalUrls.map(url => ({
+      kind: 'existing',
+      url,
+      id: crypto.randomUUID()
+    }));
+    renderEditorPhotos();
   });
 
   function closeEditor() {
-    revokePreviewUrl();
+    revokeNewPreviewUrls();
     form.remove();
     bodyElement.classList.toggle('hidden', !post.body);
-    imageElement.classList.toggle('hidden', !post.image_url);
+    galleryElement.classList.toggle('hidden', !originalUrls.length);
   }
 
   cancelButton.addEventListener('click', closeEditor);
@@ -1192,92 +1403,87 @@ function beginEditPost(post, postNode) {
     event.preventDefault();
 
     const newBody = textarea.value.trim();
-    let newImageUrl = removeImageRequested ? null : (post.image_url || null);
-    let newlyUploadedPath = null;
-
-    if (!newBody && !selectedEditImage && !newImageUrl) {
-      showToast('Keep some text or add a photo before saving.');
+    if (!newBody && !workingItems.length) {
+      showToast('Keep some text or at least one photo before saving.');
       return;
     }
 
+    const existingUrlsKept = workingItems
+      .filter(item => item.kind === 'existing')
+      .map(item => item.url);
+    const newItems = workingItems.filter(item => item.kind === 'new');
+    const photosChanged =
+      JSON.stringify(existingUrlsKept) !== JSON.stringify(originalUrls)
+      || newItems.length > 0;
     const bodyChanged = newBody !== (post.body || '');
-    const photoChanged = Boolean(selectedEditImage) || removeImageRequested;
 
-    if (!bodyChanged && !photoChanged) {
+    if (!bodyChanged && !photosChanged) {
       closeEditor();
       return;
     }
 
     textarea.disabled = true;
     fileInput.disabled = true;
-    choosePhotoButton.disabled = true;
-    removePhotoButton.disabled = true;
-    keepOriginalButton.disabled = true;
+    addButton.disabled = true;
+    removeAllButton.disabled = true;
+    resetButton.disabled = true;
     cancelButton.disabled = true;
     saveButton.disabled = true;
-    saveButton.textContent = 'Saving…';
+    saveButton.textContent = newItems.length ? 'Uploading photos…' : 'Saving…';
+
+    const uploads = [];
 
     try {
-      if (selectedEditImage) {
-        const typeToExtension = {
-          'image/jpeg': 'jpg',
-          'image/png': 'png',
-          'image/gif': 'gif',
-          'image/webp': 'webp'
-        };
-        const extension = typeToExtension[selectedEditImage.type] || 'jpg';
-        newlyUploadedPath = `${currentUser.id}/${crypto.randomUUID()}.${extension}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('kt-post-images')
-          .upload(newlyUploadedPath, selectedEditImage, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: selectedEditImage.type
-          });
-
-        if (uploadError) throw uploadError;
-
-        newImageUrl = supabase.storage
-          .from('kt-post-images')
-          .getPublicUrl(newlyUploadedPath).data.publicUrl;
+      for (let index = 0; index < newItems.length; index += 1) {
+        saveButton.textContent = `Uploading ${index + 1} of ${newItems.length}…`;
+        uploads.push(await uploadPostPhoto(newItems[index].file));
       }
 
-      if (!newBody && !newImageUrl) {
-        throw new Error('A post must contain text or a photo.');
-      }
+      const finalUrls = [];
+      let uploadIndex = 0;
+      workingItems.forEach(item => {
+        if (item.kind === 'existing') finalUrls.push(item.url);
+        else {
+          finalUrls.push(uploads[uploadIndex].url);
+          uploadIndex += 1;
+        }
+      });
 
+      saveButton.textContent = 'Saving…';
       const { error } = await supabase
         .from('kt_posts')
         .update({
           body: newBody,
-          image_url: newImageUrl
+          image_url: finalUrls[0] || null,
+          image_urls: finalUrls
         })
         .eq('id', post.id)
         .eq('user_id', currentUser.id);
-
       if (error) throw error;
 
-      if (post.image_url && post.image_url !== newImageUrl) {
-        const oldPath = storagePathFromPublicUrl(post.image_url, 'kt-post-images');
-        if (oldPath) {
-          await supabase.storage.from('kt-post-images').remove([oldPath]);
-        }
+      const removedUrls = originalUrls.filter(url => !finalUrls.includes(url));
+      const removedPaths = removedUrls
+        .map(url => storagePathFromPublicUrl(url, 'kt-post-images'))
+        .filter(Boolean);
+      if (removedPaths.length) {
+        await supabase.storage.from('kt-post-images').remove(removedPaths);
       }
 
-      revokePreviewUrl();
+      revokeNewPreviewUrls();
       showToast('Post updated.');
       await loadFeed();
     } catch (error) {
-      if (newlyUploadedPath) {
-        await supabase.storage.from('kt-post-images').remove([newlyUploadedPath]);
+      if (uploads.length) {
+        await supabase.storage
+          .from('kt-post-images')
+          .remove(uploads.map(item => item.path));
       }
 
       textarea.disabled = false;
       fileInput.disabled = false;
-      choosePhotoButton.disabled = false;
-      removePhotoButton.disabled = false;
-      keepOriginalButton.disabled = false;
+      addButton.disabled = workingItems.length >= MAX_PHOTOS_PER_ITEM;
+      removeAllButton.disabled = false;
+      resetButton.disabled = false;
       cancelButton.disabled = false;
       saveButton.disabled = false;
       saveButton.textContent = 'Save changes';
@@ -1285,8 +1491,7 @@ function beginEditPost(post, postNode) {
     }
   });
 
-  updatePhotoEditor();
-
+  renderEditorPhotos();
   setTimeout(() => {
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -1586,9 +1791,11 @@ async function deletePost(post) {
     const { error } = await supabase.from('kt_posts').delete().eq('id', post.id);
     if (error) throw error;
 
-    if (post.image_url) {
-      const path = storagePathFromPublicUrl(post.image_url, 'kt-post-images');
-      if (path) await supabase.storage.from('kt-post-images').remove([path]);
+    const paths = postImageUrls(post)
+      .map(url => storagePathFromPublicUrl(url, 'kt-post-images'))
+      .filter(Boolean);
+    if (paths.length) {
+      await supabase.storage.from('kt-post-images').remove(paths);
     }
 
     showToast('Post deleted.');
@@ -1638,18 +1845,37 @@ function extensionForAttachment(type, mime) {
   return extensions[normalized] || (type === 'image' ? 'jpg' : 'webm');
 }
 
+function messageAttachments(message) {
+  if (Array.isArray(message?.attachments) && message.attachments.length) {
+    return message.attachments.slice(0, MAX_PHOTOS_PER_ITEM);
+  }
+  if (message?.attachment_path && message?.attachment_type) {
+    return [{
+      type: message.attachment_type,
+      path: message.attachment_path,
+      mime: message.attachment_mime,
+      size: message.attachment_size_bytes,
+      duration: message.audio_duration_seconds
+    }];
+  }
+  return [];
+}
+
 function messagePreviewText(message) {
   const body = String(message?.body || '').trim();
-  if (message?.attachment_type === 'image') return body ? `📷 ${body}` : '📷 Photo';
-  if (message?.attachment_type === 'audio') return body ? `🎙 ${body}` : '🎙 Voice message';
+  const attachments = messageAttachments(message);
+  const imageCount = attachments.filter(item => item.type === 'image').length;
+  const hasAudio = attachments.some(item => item.type === 'audio');
+  if (imageCount) {
+    const label = imageCount === 1 ? '📷 Photo' : `📷 ${imageCount} photos`;
+    return body ? `${label} · ${body}` : label;
+  }
+  if (hasAudio) return body ? `🎙 ${body}` : '🎙 Voice message';
   return body || 'Message';
 }
 
 function revokeChatDraftUrls() {
-  if (selectedChatImagePreviewUrl) {
-    URL.revokeObjectURL(selectedChatImagePreviewUrl);
-    selectedChatImagePreviewUrl = null;
-  }
+  selectedChatImages.forEach(entry => URL.revokeObjectURL(entry.previewUrl));
   if (recordedChatAudioPreviewUrl) {
     URL.revokeObjectURL(recordedChatAudioPreviewUrl);
     recordedChatAudioPreviewUrl = null;
@@ -1662,7 +1888,7 @@ function clearChatAttachmentDraft() {
   }
 
   revokeChatDraftUrls();
-  selectedChatImageFile = null;
+  selectedChatImages = [];
   recordedChatAudioBlob = null;
   recordedChatAudioDuration = 0;
   els.chatPhotoInput.value = '';
@@ -1670,9 +1896,8 @@ function clearChatAttachmentDraft() {
 }
 
 function clearSelectedChatPhoto() {
-  if (selectedChatImagePreviewUrl) URL.revokeObjectURL(selectedChatImagePreviewUrl);
-  selectedChatImagePreviewUrl = null;
-  selectedChatImageFile = null;
+  selectedChatImages.forEach(entry => URL.revokeObjectURL(entry.previewUrl));
+  selectedChatImages = [];
   els.chatPhotoInput.value = '';
 }
 
@@ -1686,52 +1911,92 @@ function clearRecordedChatAudio() {
 }
 
 function updateChatAttachmentDraft() {
-  const hasImage = Boolean(selectedChatImageFile && selectedChatImagePreviewUrl);
+  const hasImages = selectedChatImages.length > 0;
   const hasAudio = Boolean(recordedChatAudioBlob && recordedChatAudioPreviewUrl);
-  const hasAttachment = hasImage || hasAudio;
+  const hasAttachment = hasImages || hasAudio;
 
   els.chatAttachmentPreview.classList.toggle('hidden', !hasAttachment);
-  els.chatImageDraft.classList.toggle('hidden', !hasImage);
+  els.chatImageDraft.classList.toggle('hidden', !hasImages);
   els.chatAudioDraft.classList.toggle('hidden', !hasAudio);
+  els.chatImageDraftGrid.innerHTML = '';
 
-  if (hasImage) {
-    els.chatImageDraftPreview.src = selectedChatImagePreviewUrl;
-    els.chatImageDraftInfo.textContent = `${formatFileSize(selectedChatImageFile.size)} · Private photo`;
-  } else {
-    els.chatImageDraftPreview.removeAttribute('src');
+  if (hasImages) {
+    const totalBytes = selectedChatImages.reduce((sum, entry) => sum + entry.file.size, 0);
+    els.chatImageDraftInfo.textContent =
+      `${selectedChatImages.length} of ${MAX_PHOTOS_PER_ITEM} photos · ${formatFileSize(totalBytes)}`;
+
+    selectedChatImages.forEach((entry, index) => {
+      const item = document.createElement('div');
+      item.className = 'chat-image-draft-item';
+
+      const image = document.createElement('img');
+      image.src = entry.previewUrl;
+      image.alt = `Private photo ${index + 1}`;
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `Remove private photo ${index + 1}`);
+      remove.addEventListener('click', () => {
+        URL.revokeObjectURL(entry.previewUrl);
+        selectedChatImages.splice(index, 1);
+        updateChatAttachmentDraft();
+      });
+
+      item.append(image, remove);
+      els.chatImageDraftGrid.appendChild(item);
+    });
   }
 
   if (hasAudio) {
     els.chatAudioDraftPlayer.src = recordedChatAudioPreviewUrl;
-    els.chatAudioDraftInfo.textContent = `${formatVoiceDuration(recordedChatAudioDuration)} · ${formatFileSize(recordedChatAudioBlob.size)}`;
+    els.chatAudioDraftInfo.textContent =
+      `${formatVoiceDuration(recordedChatAudioDuration)} · ${formatFileSize(recordedChatAudioBlob.size)}`;
   }
 }
 
+
 function selectChatPhoto() {
-  const file = els.chatPhotoInput.files?.[0];
-  if (!file) return;
+  const files = [...(els.chatPhotoInput.files || [])];
+  els.chatPhotoInput.value = '';
+  if (!files.length) return;
 
-  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-  const mime = normalizeAttachmentMime(file.type);
-
-  if (!allowed.includes(mime)) {
-    els.chatPhotoInput.value = '';
-    showToast('Choose a JPG, PNG, GIF, or WebP photo.');
+  if (files.some(file => !allowedPhotoType(file))) {
+    showToast('Choose only JPG, PNG, GIF, or WebP photos.');
     return;
   }
-  if (file.size > CHAT_IMAGE_MAX_BYTES) {
-    els.chatPhotoInput.value = '';
-    showToast('The private-message photo must be 10 MB or smaller.');
+  if (files.some(file => file.size > CHAT_IMAGE_MAX_BYTES)) {
+    showToast('Each private photo must be 10 MB or smaller.');
+    return;
+  }
+
+  const additions = uniqueSelectedFiles(selectedChatImages, files);
+  if (selectedChatImages.length + additions.length > MAX_PHOTOS_PER_ITEM) {
+    showToast('You can send up to five photos in one private message.');
+    return;
+  }
+
+  const totalBytes = [
+    ...selectedChatImages.map(entry => entry.file),
+    ...additions
+  ].reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_PHOTO_TOTAL_BYTES) {
+    showToast('The private photos must total 30 MB or less.');
     return;
   }
 
   if (chatMediaRecorder?.state === 'recording') stopChatVoiceRecording(false);
   clearRecordedChatAudio();
-  clearSelectedChatPhoto();
-  selectedChatImageFile = file;
-  selectedChatImagePreviewUrl = URL.createObjectURL(file);
+
+  additions.forEach(file => {
+    selectedChatImages.push({
+      file,
+      previewUrl: URL.createObjectURL(file)
+    });
+  });
   updateChatAttachmentDraft();
 }
+
 
 function supportedVoiceMimeType() {
   if (!window.MediaRecorder) return '';
@@ -1897,40 +2162,57 @@ async function privateMessageAttachmentUrl(path) {
   return url;
 }
 
-async function renderPrivateMessageAttachment(container, message) {
-  if (!message.attachment_path || !message.attachment_type) return;
+async function renderPrivateMessageAttachments(container, message) {
+  const attachments = messageAttachments(message);
+  if (!attachments.length) return;
 
   const loading = document.createElement('div');
   loading.className = 'chat-attachment-loading';
-  loading.textContent = message.attachment_type === 'image'
-    ? 'Loading private photo…'
-    : 'Loading voice message…';
+  loading.textContent = attachments.some(item => item.type === 'audio')
+    ? 'Loading voice message…'
+    : `Loading ${attachments.length === 1 ? 'private photo' : 'private photos'}…`;
   container.appendChild(loading);
 
   try {
-    const signedUrl = await privateMessageAttachmentUrl(message.attachment_path);
-    if (!container.isConnected || !signedUrl) return;
+    const resolved = await Promise.all(
+      attachments.map(async item => ({
+        ...item,
+        signedUrl: await privateMessageAttachmentUrl(item.path)
+      }))
+    );
+    if (!container.isConnected) return;
     loading.remove();
 
-    if (message.attachment_type === 'image') {
-      const link = document.createElement('a');
-      link.className = 'chat-image-attachment';
-      link.href = signedUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.setAttribute('aria-label', 'Open private photo');
+    const images = resolved.filter(item => item.type === 'image' && item.signedUrl);
+    const audioItem = resolved.find(item => item.type === 'audio' && item.signedUrl);
 
-      const image = document.createElement('img');
-      image.src = signedUrl;
-      image.alt = 'Private message photo';
-      image.loading = 'lazy';
-      image.referrerPolicy = 'no-referrer';
-      link.appendChild(image);
-      container.appendChild(link);
-      return;
+    if (images.length) {
+      const gallery = document.createElement('div');
+      gallery.className = 'chat-private-gallery';
+      gallery.dataset.count = String(images.length);
+
+      images.forEach((item, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chat-private-gallery-item';
+        button.setAttribute('aria-label', `Open private photo ${index + 1} of ${images.length}`);
+
+        const image = document.createElement('img');
+        image.src = item.signedUrl;
+        image.alt = `Private message photo ${index + 1}`;
+        image.loading = 'lazy';
+        image.referrerPolicy = 'no-referrer';
+
+        button.appendChild(image);
+        button.addEventListener('click', () =>
+          openPhotoViewer(images.map(photo => photo.signedUrl), index)
+        );
+        gallery.appendChild(button);
+      });
+      container.appendChild(gallery);
     }
 
-    if (message.attachment_type === 'audio') {
+    if (audioItem) {
       const voice = document.createElement('div');
       voice.className = 'chat-voice-attachment';
 
@@ -1941,10 +2223,10 @@ async function renderPrivateMessageAttachment(container, message) {
       const audio = document.createElement('audio');
       audio.controls = true;
       audio.preload = 'metadata';
-      audio.src = signedUrl;
+      audio.src = audioItem.signedUrl;
 
       const duration = document.createElement('small');
-      duration.textContent = formatVoiceDuration(message.audio_duration_seconds || 0);
+      duration.textContent = formatVoiceDuration(audioItem.duration || 0);
 
       voice.append(label, audio, duration);
       container.appendChild(voice);
@@ -1955,6 +2237,7 @@ async function renderPrivateMessageAttachment(container, message) {
     loading.textContent = 'This private attachment is unavailable.';
   }
 }
+
 
 function updateMessageBadges() {
   const count = Math.max(0, Number(unreadMessageCount) || 0);
@@ -2210,13 +2493,14 @@ function renderChatMessages() {
     row.dataset.messageId = message.id;
 
     const bubble = document.createElement('div');
-    bubble.className = `chat-message-bubble ${message.attachment_type ? 'has-attachment' : ''}`.trim();
+    const attachments = messageAttachments(message);
+    bubble.className = `chat-message-bubble ${attachments.length ? 'has-attachment' : ''}`.trim();
 
-    if (message.attachment_path && message.attachment_type) {
+    if (attachments.length) {
       const attachment = document.createElement('div');
       attachment.className = 'chat-message-attachment';
       bubble.appendChild(attachment);
-      renderPrivateMessageAttachment(attachment, message);
+      renderPrivateMessageAttachments(attachment, message);
     }
 
     if (message.body) {
@@ -2265,59 +2549,82 @@ async function sendChatMessage(event) {
   }
 
   const body = els.chatMessageInput.value.trim();
-  const attachment = selectedChatImageFile
-    ? {
-        type: 'image',
-        blob: selectedChatImageFile,
-        mime: normalizeAttachmentMime(selectedChatImageFile.type),
-        size: selectedChatImageFile.size,
-        duration: null
-      }
-    : recordedChatAudioBlob
-      ? {
-          type: 'audio',
-          blob: recordedChatAudioBlob,
-          mime: normalizeAttachmentMime(recordedChatAudioBlob.type || 'audio/webm'),
-          size: recordedChatAudioBlob.size,
-          duration: Math.max(1, Math.min(CHAT_AUDIO_MAX_SECONDS, Math.round(recordedChatAudioDuration)))
-        }
-      : null;
+  const imageEntries = selectedChatImages.map(entry => ({
+    type: 'image',
+    blob: entry.file,
+    mime: normalizeAttachmentMime(entry.file.type),
+    size: entry.file.size,
+    duration: null
+  }));
+  const audioEntries = recordedChatAudioBlob
+    ? [{
+        type: 'audio',
+        blob: recordedChatAudioBlob,
+        mime: normalizeAttachmentMime(recordedChatAudioBlob.type || 'audio/webm'),
+        size: recordedChatAudioBlob.size,
+        duration: Math.max(
+          1,
+          Math.min(CHAT_AUDIO_MAX_SECONDS, Math.round(recordedChatAudioDuration))
+        )
+      }]
+    : [];
+  const attachmentEntries = imageEntries.length ? imageEntries : audioEntries;
 
-  if (!body && !attachment) {
-    setMessage(els.chatMessageStatus, 'Write a message, add a photo, or record a voice message.');
+  if (!body && !attachmentEntries.length) {
+    setMessage(
+      els.chatMessageStatus,
+      'Write a message, add up to five photos, or record a voice message.'
+    );
     return;
   }
 
-  let uploadedPath = null;
-  setChatComposerBusy(true, attachment ? 'Uploading…' : 'Sending…');
+  const uploads = [];
+  setChatComposerBusy(true, attachmentEntries.length ? 'Uploading…' : 'Sending…');
   setMessage(els.chatMessageStatus);
 
   try {
-    if (attachment) {
+    for (let index = 0; index < attachmentEntries.length; index += 1) {
+      const attachment = attachmentEntries[index];
       const extension = extensionForAttachment(attachment.type, attachment.mime);
-      uploadedPath = `${currentUser.id}/${activeConversation.id}/${crypto.randomUUID()}.${extension}`;
+      const path =
+        `${currentUser.id}/${activeConversation.id}/${crypto.randomUUID()}.${extension}`;
+
+      els.sendMessageButton.textContent =
+        attachmentEntries.length > 1
+          ? `Uploading ${index + 1}/${attachmentEntries.length}`
+          : 'Uploading…';
 
       const { error: uploadError } = await supabase.storage
         .from('kt-message-attachments')
-        .upload(uploadedPath, attachment.blob, {
+        .upload(path, attachment.blob, {
           cacheControl: '3600',
           upsert: false,
           contentType: attachment.mime
         });
       if (uploadError) throw uploadError;
-      els.sendMessageButton.textContent = 'Sending…';
+
+      uploads.push({
+        type: attachment.type,
+        path,
+        mime: attachment.mime,
+        size: attachment.size,
+        duration: attachment.duration
+      });
     }
 
+    els.sendMessageButton.textContent = 'Sending…';
+    const first = uploads[0] || null;
     const { error } = await supabase.from('kt_messages').insert({
       conversation_id: activeConversation.id,
       sender_id: currentUser.id,
       recipient_id: activeChatProfile.id,
       body: body || null,
-      attachment_type: attachment?.type || null,
-      attachment_path: uploadedPath,
-      attachment_mime: attachment?.mime || null,
-      attachment_size_bytes: attachment?.size || null,
-      audio_duration_seconds: attachment?.duration || null
+      attachments: uploads,
+      attachment_type: first?.type || null,
+      attachment_path: first?.path || null,
+      attachment_mime: first?.mime || null,
+      attachment_size_bytes: first?.size || null,
+      audio_duration_seconds: first?.duration || null
     });
     if (error) throw error;
 
@@ -2325,14 +2632,17 @@ async function sendChatMessage(event) {
     clearChatAttachmentDraft();
     await openConversation(activeConversation, activeChatProfile);
   } catch (error) {
-    if (uploadedPath) {
-      await supabase.storage.from('kt-message-attachments').remove([uploadedPath]);
+    if (uploads.length) {
+      await supabase.storage
+        .from('kt-message-attachments')
+        .remove(uploads.map(item => item.path));
     }
     setMessage(els.chatMessageStatus, error.message || 'Unable to send this message.');
   } finally {
     setChatComposerBusy(false);
   }
 }
+
 
 async function markActiveConversationRead() {
   if (!activeConversation) return;
@@ -2364,12 +2674,17 @@ async function deleteChatMessage(message) {
       .eq('sender_id', currentUser.id);
     if (error) throw error;
 
-    if (message.attachment_path) {
-      messageAttachmentUrlCache.delete(message.attachment_path);
+    const attachmentPaths = messageAttachments(message)
+      .map(item => item.path)
+      .filter(Boolean);
+    attachmentPaths.forEach(path => messageAttachmentUrlCache.delete(path));
+    if (attachmentPaths.length) {
       const { error: storageError } = await supabase.storage
         .from('kt-message-attachments')
-        .remove([message.attachment_path]);
-      if (storageError) console.warn('Unable to remove deleted message attachment:', storageError);
+        .remove(attachmentPaths);
+      if (storageError) {
+        console.warn('Unable to remove deleted message attachments:', storageError);
+      }
     }
 
     activeChatMessages = activeChatMessages.filter(item => item.id !== message.id);
@@ -2483,7 +2798,10 @@ function startMessageUpdates() {
       event: 'DELETE', schema: 'public', table: 'kt_messages'
     }, async payload => {
       const oldMessage = payload.old || {};
-      if (oldMessage.attachment_path) messageAttachmentUrlCache.delete(oldMessage.attachment_path);
+      messageAttachments(oldMessage)
+        .map(item => item.path)
+        .filter(Boolean)
+        .forEach(path => messageAttachmentUrlCache.delete(path));
       if (activeConversation?.id === oldMessage.conversation_id && feedMode === 'chat') {
         activeChatMessages = activeChatMessages.filter(item => item.id !== oldMessage.id);
         renderChatMessages();
@@ -3082,14 +3400,15 @@ async function deleteOwnPrivateMessageAttachments() {
   while (true) {
     const { data, error } = await supabase
       .from('kt_messages')
-      .select('attachment_path')
+      .select('attachment_path,attachments')
       .eq('sender_id', currentUser.id)
-      .not('attachment_path', 'is', null)
       .range(from, from + pageSize - 1);
 
     if (error) throw error;
     const rows = data || [];
-    paths.push(...rows.map(row => row.attachment_path).filter(Boolean));
+    paths.push(
+      ...rows.flatMap(row => messageAttachments(row).map(item => item.path)).filter(Boolean)
+    );
     if (rows.length < pageSize) break;
     from += pageSize;
   }

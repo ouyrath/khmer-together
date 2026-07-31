@@ -300,12 +300,14 @@
 
           <form id="chatComposer" class="chat-composer card">
             <div id="chatAttachmentPreview" class="chat-attachment-preview hidden">
-              <div id="chatImageDraft" class="chat-image-draft hidden">
-                <img id="chatImageDraftPreview" alt="Selected private-message photo">
-                <div>
-                  <strong>Photo ready</strong>
-                  <span id="chatImageDraftInfo">Private image</span>
+              <div id="chatImageDraft" class="chat-image-draft multi-chat-image-draft hidden">
+                <div class="chat-image-draft-title">
+                  <div>
+                    <strong id="chatImageDraftInfo">Photos ready</strong>
+                    <span>Private to this conversation</span>
+                  </div>
                 </div>
+                <div id="chatImageDraftGrid" class="chat-image-draft-grid"></div>
               </div>
               <div id="chatAudioDraft" class="chat-audio-draft hidden">
                 <span class="voice-draft-icon" aria-hidden="true">🎙</span>
@@ -328,7 +330,7 @@
 
             <div class="chat-composer-main">
               <div class="chat-media-actions" aria-label="Message attachments">
-                <input id="chatPhotoInput" class="hidden" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+                <input id="chatPhotoInput" class="hidden" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp">
                 <button id="chatPhotoButton" class="chat-media-button" type="button" title="Add photo" aria-label="Add photo">
                   <span aria-hidden="true">📷</span><small>Photo</small>
                 </button>
@@ -340,7 +342,7 @@
               <textarea id="chatMessageInput" maxlength="2000" rows="1" placeholder="Write a private message…"></textarea>
               <button id="sendMessageButton" class="button primary" type="submit">Send</button>
             </div>
-            <small class="chat-media-note">Photos: up to 10 MB. Voice: up to 5 minutes. Attachments stay private to this conversation.</small>
+            <small class="chat-media-note">Photos: up to 5, 10 MB each and 30 MB total. Voice: up to 5 minutes. Attachments stay private.</small>
           </form>
           <p id="chatMessageStatus" class="form-message" role="status"></p>
         </section>
@@ -584,14 +586,17 @@
 
       <label class="upload-box" for="postImage">
         <span class="upload-icon">＋</span>
-        <strong>Add a photo</strong>
-        <small>JPG, PNG, GIF, or WebP — maximum 8 MB</small>
-        <input id="postImage" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+        <strong>Add up to five photos</strong>
+        <small>JPG, PNG, GIF, or WebP — 10 MB each, 30 MB total</small>
+        <input id="postImage" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp">
       </label>
 
-      <div id="imagePreviewWrap" class="image-preview-wrap hidden">
-        <img id="imagePreview" alt="Selected post preview">
-        <button id="removeImageButton" class="remove-image" type="button">Remove photo</button>
+      <div id="imagePreviewWrap" class="multi-image-preview-wrap hidden">
+        <div class="multi-image-preview-heading">
+          <strong id="postPhotoCount">0 of 5 photos selected</strong>
+          <button id="removeImageButton" class="text-button danger-text" type="button">Remove all</button>
+        </div>
+        <div id="imagePreviewGrid" class="multi-image-preview-grid"></div>
       </div>
 
       <p id="postMessage" class="form-message" role="status"></p>
@@ -740,6 +745,16 @@
     </form>
   </dialog>
 
+  <dialog id="photoViewerDialog" class="photo-viewer-dialog">
+    <button id="closePhotoViewerButton" class="photo-viewer-close" type="button" aria-label="Close photo viewer">×</button>
+    <button id="previousPhotoButton" class="photo-viewer-nav previous" type="button" aria-label="Previous photo">‹</button>
+    <figure>
+      <img id="photoViewerImage" alt="Large photo">
+      <figcaption id="photoViewerCaption">Photo 1 of 1</figcaption>
+    </figure>
+    <button id="nextPhotoButton" class="photo-viewer-nav next" type="button" aria-label="Next photo">›</button>
+  </dialog>
+
   <template id="postTemplate">
     <article class="post-card card">
       <header class="post-header">
@@ -758,7 +773,7 @@
       </header>
 
       <p class="post-body"></p>
-      <img class="post-image hidden" alt="Post image">
+      <div class="post-gallery hidden" aria-label="Post photos"></div>
 
       <div class="post-stats">
         <span class="like-count">0 likes</span>
