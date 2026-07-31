@@ -32,10 +32,26 @@ let notificationPollTimer = null;
 let conversations = [];
 let conversationProfiles = new Map();
 let conversationMessages = [];
+let groupConversations = [];
+let groupMemberships = [];
+let groupMessages = [];
+let groupMemberRows = [];
+let groupProfiles = new Map();
+let groupImageUrlCache = new Map();
 let activeConversation = null;
+let activeChatKind = 'direct';
 let activeChatProfile = null;
 let activeChatMessages = [];
 let activeChatMessagingAllowed = true;
+let activeGroupMembership = null;
+let activeGroupMembers = [];
+let activeGroupProfiles = new Map();
+let newGroupSelectedMembers = new Map();
+let newGroupPhotoFile = null;
+let newGroupPhotoPreviewUrl = null;
+let groupSettingsPhotoFile = null;
+let groupSettingsPhotoPreviewUrl = null;
+let reportingGroupId = null;
 let unreadMessageCount = 0;
 let messageChannel = null;
 let messagePollTimer = null;
@@ -137,7 +153,8 @@ const els = {
   messagesView: $('#messagesView'), messagesSummary: $('#messagesSummary'),
   messagesLoading: $('#messagesLoading'), messagesEmpty: $('#messagesEmpty'),
   conversationsList: $('#conversationsList'), messagesRefreshButton: $('#messagesRefreshButton'),
-  findMembersForMessages: $('#findMembersForMessages'), chatView: $('#chatView'),
+  findMembersForMessages: $('#findMembersForMessages'), newGroupButton: $('#newGroupButton'),
+  chatView: $('#chatView'),
   chatBackButton: $('#chatBackButton'), chatMemberButton: $('#chatMemberButton'),
   chatMemberAvatar: $('#chatMemberAvatar'), chatMemberName: $('#chatMemberName'),
   chatMemberUsername: $('#chatMemberUsername'), chatReportButton: $('#chatReportButton'),
@@ -162,6 +179,35 @@ const els = {
   conversationReportMessage: $('#conversationReportMessage'),
   submitConversationReport: $('#submitConversationReportButton'),
   reportedConversationMember: $('#reportedConversationMember'),
+  createGroupDialog: $('#createGroupDialog'), createGroupForm: $('#createGroupForm'),
+  newGroupName: $('#newGroupName'), newGroupPhotoInput: $('#newGroupPhotoInput'),
+  newGroupPhotoPreview: $('#newGroupPhotoPreview'),
+  chooseNewGroupPhoto: $('#chooseNewGroupPhotoButton'),
+  removeNewGroupPhoto: $('#removeNewGroupPhotoButton'),
+  newGroupMemberSearch: $('#newGroupMemberSearch'),
+  newGroupSelectedCount: $('#newGroupSelectedCount'),
+  newGroupSelectedMembers: $('#newGroupSelectedMembers'),
+  newGroupMemberResults: $('#newGroupMemberResults'),
+  createGroupMessage: $('#createGroupMessage'),
+  createGroupSubmit: $('#createGroupSubmitButton'),
+  groupDetailsDialog: $('#groupDetailsDialog'),
+  groupDetailsTitle: $('#groupDetailsTitle'), groupDetailsSummary: $('#groupDetailsSummary'),
+  groupAdminSettings: $('#groupAdminSettings'),
+  groupSettingsPhotoPreview: $('#groupSettingsPhotoPreview'),
+  groupSettingsPhotoInput: $('#groupSettingsPhotoInput'),
+  chooseGroupSettingsPhoto: $('#chooseGroupSettingsPhotoButton'),
+  removeGroupSettingsPhoto: $('#removeGroupSettingsPhotoButton'),
+  renameGroupForm: $('#renameGroupForm'), renameGroupInput: $('#renameGroupInput'),
+  renameGroupButton: $('#renameGroupButton'),
+  groupAddMemberSearch: $('#groupAddMemberSearch'),
+  groupAddMemberResults: $('#groupAddMemberResults'),
+  groupMemberCount: $('#groupMemberCount'), groupMembersList: $('#groupMembersList'),
+  leaveGroupButton: $('#leaveGroupButton'), groupDetailsMessage: $('#groupDetailsMessage'),
+  groupReportDialog: $('#groupReportDialog'), groupReportForm: $('#groupReportForm'),
+  groupReportReason: $('#groupReportReason'), groupReportDetails: $('#groupReportDetails'),
+  groupReportMessage: $('#groupReportMessage'),
+  submitGroupReport: $('#submitGroupReportButton'),
+  reportedGroupPreview: $('#reportedGroupPreview'),
   accountSettingsNav: $('#accountSettingsNav'),
   accountSettingsView: $('#accountSettingsView'),
   settingsCurrentEmail: $('#settingsCurrentEmail'),
@@ -462,12 +508,20 @@ function bindEvents() {
   });
   els.messagesRefreshButton.addEventListener('click', loadConversations);
   els.findMembersForMessages.addEventListener('click', () => switchView('members'));
+  els.newGroupButton.addEventListener('click', openCreateGroupDialog);
   els.chatBackButton.addEventListener('click', () => { clearChatAttachmentDraft(); switchView('messages'); });
   els.chatMemberButton.addEventListener('click', () => {
-    if (activeChatProfile?.id) openMemberProfile(activeChatProfile.id, { returnMode: 'messages' });
+    if (activeChatKind === 'group') openGroupDetailsDialog();
+    else if (activeChatProfile?.id) openMemberProfile(activeChatProfile.id, { returnMode: 'messages' });
   });
-  els.chatReportButton.addEventListener('click', openConversationReportDialog);
-  els.chatBlockButton.addEventListener('click', blockActiveChatMember);
+  els.chatReportButton.addEventListener('click', () => {
+    if (activeChatKind === 'group') openGroupReportDialog();
+    else openConversationReportDialog();
+  });
+  els.chatBlockButton.addEventListener('click', () => {
+    if (activeChatKind === 'group') openGroupDetailsDialog();
+    else blockActiveChatMember();
+  });
   els.chatComposer.addEventListener('submit', sendChatMessage);
   els.chatPhotoButton.addEventListener('click', () => els.chatPhotoInput.click());
   els.chatPhotoInput.addEventListener('change', selectChatPhoto);
@@ -476,6 +530,18 @@ function bindEvents() {
   els.cancelVoiceRecording.addEventListener('click', () => stopChatVoiceRecording(false));
   els.removeChatAttachment.addEventListener('click', clearChatAttachmentDraft);
   els.conversationReportForm.addEventListener('submit', submitConversationReport);
+  els.createGroupForm.addEventListener('submit', createPrivateGroup);
+  els.chooseNewGroupPhoto.addEventListener('click', () => els.newGroupPhotoInput.click());
+  els.newGroupPhotoInput.addEventListener('change', selectNewGroupPhoto);
+  els.removeNewGroupPhoto.addEventListener('click', clearNewGroupPhoto);
+  els.newGroupMemberSearch.addEventListener('input', renderNewGroupMemberResults);
+  els.renameGroupForm.addEventListener('submit', renameActiveGroup);
+  els.chooseGroupSettingsPhoto.addEventListener('click', () => els.groupSettingsPhotoInput.click());
+  els.groupSettingsPhotoInput.addEventListener('change', updateActiveGroupPhoto);
+  els.removeGroupSettingsPhoto.addEventListener('click', removeActiveGroupPhoto);
+  els.groupAddMemberSearch.addEventListener('input', renderGroupAddMemberResults);
+  els.leaveGroupButton.addEventListener('click', leaveActiveGroup);
+  els.groupReportForm.addEventListener('submit', submitGroupReport);
   els.changeEmailForm.addEventListener('submit', changeAccountEmail);
   els.changePasswordForm.addEventListener('submit', changeAccountPassword);
   els.sendPasswordCode.addEventListener('click', sendPasswordVerificationCode);
@@ -2239,6 +2305,765 @@ async function renderPrivateMessageAttachments(container, message) {
 }
 
 
+function groupInitials(group = {}) {
+  return initials(group.name || 'Group');
+}
+
+async function privateGroupImageUrl(path) {
+  if (!path) return null;
+  const cached = groupImageUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const { data, error } = await supabase.storage
+    .from('kt-group-images')
+    .createSignedUrl(path, 3600);
+  if (error) throw error;
+
+  const url = data?.signedUrl || null;
+  if (url) {
+    groupImageUrlCache.set(path, {
+      url,
+      expiresAt: Date.now() + 50 * 60 * 1000
+    });
+  }
+  return url;
+}
+
+function setGroupAvatar(element, group = {}) {
+  if (!element) return;
+  element.textContent = groupInitials(group);
+  element.style.backgroundImage = '';
+  element.classList.remove('has-image');
+
+  if (!group.image_path) return;
+  privateGroupImageUrl(group.image_path)
+    .then(url => {
+      if (!element.isConnected || !url) return;
+      element.textContent = '';
+      element.style.backgroundImage = `url(${JSON.stringify(url)})`;
+      element.classList.add('has-image');
+    })
+    .catch(error => console.warn('Unable to load group photo:', error));
+}
+
+function currentGroupRole() {
+  return activeGroupMembership?.role || 'member';
+}
+
+function canManageActiveGroup() {
+  return ['owner', 'admin'].includes(currentGroupRole());
+}
+
+function isActiveGroupOwner() {
+  return currentGroupRole() === 'owner';
+}
+
+function groupConversationItem(group) {
+  const membership = groupMemberships.find(item => item.group_id === group.id) || null;
+  const messages = groupMessages.filter(message => message.group_id === group.id);
+  const latest = messages[0] || null;
+  const unread = messages.filter(message =>
+    message.sender_id !== currentUser.id
+    && new Date(message.created_at) > new Date(membership?.last_read_at || 0)
+  ).length;
+
+  return {
+    kind: 'group',
+    id: group.id,
+    group,
+    membership,
+    latest,
+    unread,
+    updated_at: latest?.created_at || group.updated_at
+  };
+}
+
+function directConversationItem(conversation) {
+  const otherId = otherConversationUser(conversation);
+  const profile = conversationProfiles.get(otherId) || {
+    id: otherId,
+    full_name: 'Khmer Together Member',
+    username: 'member'
+  };
+  const messages = conversationMessages.filter(message =>
+    message.conversation_id === conversation.id
+  );
+  const latest = messages[0] || null;
+  const unread = messages.filter(message =>
+    message.recipient_id === currentUser.id && !message.read_at
+  ).length;
+
+  return {
+    kind: 'direct',
+    id: conversation.id,
+    conversation,
+    profile,
+    latest,
+    unread,
+    updated_at: latest?.created_at || conversation.updated_at
+  };
+}
+
+function clearNewGroupPhoto() {
+  if (newGroupPhotoPreviewUrl) URL.revokeObjectURL(newGroupPhotoPreviewUrl);
+  newGroupPhotoPreviewUrl = null;
+  newGroupPhotoFile = null;
+  els.newGroupPhotoInput.value = '';
+  els.newGroupPhotoPreview.textContent = groupInitials({ name: els.newGroupName.value || 'Group' });
+  els.newGroupPhotoPreview.style.backgroundImage = '';
+  els.newGroupPhotoPreview.classList.remove('has-image');
+  els.removeNewGroupPhoto.classList.add('hidden');
+}
+
+function selectNewGroupPhoto() {
+  const file = els.newGroupPhotoInput.files?.[0];
+  els.newGroupPhotoInput.value = '';
+  if (!file) return;
+
+  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) {
+    showToast('Choose a JPG, PNG, or WebP group photo.');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('The group photo must be 5 MB or smaller.');
+    return;
+  }
+
+  clearNewGroupPhoto();
+  newGroupPhotoFile = file;
+  newGroupPhotoPreviewUrl = URL.createObjectURL(file);
+  els.newGroupPhotoPreview.textContent = '';
+  els.newGroupPhotoPreview.style.backgroundImage =
+    `url(${JSON.stringify(newGroupPhotoPreviewUrl)})`;
+  els.newGroupPhotoPreview.classList.add('has-image');
+  els.removeNewGroupPhoto.classList.remove('hidden');
+}
+
+function visibleGroupCandidateProfiles() {
+  const blockedIds = currentBlockedIds();
+  return [...feedState.profiles.values()]
+    .filter(profile => profile.id !== currentUser.id)
+    .filter(profile => !blockedIds.has(profile.id))
+    .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
+}
+
+function openCreateGroupDialog() {
+  newGroupSelectedMembers = new Map();
+  els.newGroupName.value = '';
+  els.newGroupMemberSearch.value = '';
+  setMessage(els.createGroupMessage);
+  clearNewGroupPhoto();
+  renderNewGroupSelectedMembers();
+  renderNewGroupMemberResults();
+  els.createGroupDialog.showModal();
+  setTimeout(() => els.newGroupName.focus(), 0);
+}
+
+function renderNewGroupSelectedMembers() {
+  els.newGroupSelectedMembers.innerHTML = '';
+  els.newGroupSelectedCount.textContent =
+    `${newGroupSelectedMembers.size} selected`;
+
+  for (const profile of newGroupSelectedMembers.values()) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'group-selected-chip';
+    chip.setAttribute('aria-label', `Remove ${profile.full_name} from group`);
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    avatar.style.width = '28px';
+    avatar.style.height = '28px';
+    avatar.style.fontSize = '9px';
+    setAvatar(avatar, profile);
+
+    const name = document.createElement('span');
+    name.textContent = profile.full_name || profile.username || 'Member';
+
+    const remove = document.createElement('strong');
+    remove.textContent = '×';
+
+    chip.append(avatar, name, remove);
+    chip.addEventListener('click', () => {
+      newGroupSelectedMembers.delete(profile.id);
+      renderNewGroupSelectedMembers();
+      renderNewGroupMemberResults();
+    });
+    els.newGroupSelectedMembers.appendChild(chip);
+  }
+}
+
+function renderNewGroupMemberResults() {
+  const query = els.newGroupMemberSearch.value.trim().toLowerCase().replace(/^@/, '');
+  const profiles = visibleGroupCandidateProfiles()
+    .filter(profile => !newGroupSelectedMembers.has(profile.id))
+    .filter(profile => {
+      if (!query) return true;
+      return String(profile.full_name || '').toLowerCase().includes(query)
+        || String(profile.username || '').toLowerCase().includes(query);
+    })
+    .slice(0, 30);
+
+  els.newGroupMemberResults.innerHTML = '';
+  for (const profile of profiles) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'group-member-result';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    setAvatar(avatar, profile);
+
+    const text = document.createElement('span');
+    text.className = 'group-member-result-text';
+    const name = document.createElement('strong');
+    name.textContent = profile.full_name || 'Khmer Together Member';
+    const username = document.createElement('small');
+    username.textContent = `@${profile.username || 'member'}`;
+    text.append(name, username);
+
+    const add = document.createElement('span');
+    add.className = 'group-add-symbol';
+    add.textContent = '＋';
+
+    row.append(avatar, text, add);
+    row.addEventListener('click', () => {
+      if (newGroupSelectedMembers.size >= 24) {
+        showToast('A private group can include up to 25 members including you.');
+        return;
+      }
+      newGroupSelectedMembers.set(profile.id, profile);
+      renderNewGroupSelectedMembers();
+      renderNewGroupMemberResults();
+    });
+    els.newGroupMemberResults.appendChild(row);
+  }
+}
+
+async function uploadGroupPhoto(groupId, file) {
+  const extension = extensionForAttachment('image', file.type);
+  const path = `${currentUser.id}/${groupId}/${crypto.randomUUID()}.${extension}`;
+  const { error } = await supabase.storage
+    .from('kt-group-images')
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type
+    });
+  if (error) throw error;
+  return path;
+}
+
+async function createPrivateGroup(event) {
+  event.preventDefault();
+  const name = els.newGroupName.value.trim();
+  if (name.length < 2) {
+    setMessage(els.createGroupMessage, 'Enter a group name with at least 2 characters.');
+    return;
+  }
+  if (!newGroupSelectedMembers.size) {
+    setMessage(els.createGroupMessage, 'Choose at least one other member.');
+    return;
+  }
+
+  els.createGroupSubmit.disabled = true;
+  els.createGroupSubmit.textContent = 'Creating group…';
+  setMessage(els.createGroupMessage);
+
+  let groupId = null;
+  let imagePath = null;
+
+  try {
+    const { data, error } = await supabase.rpc('kt_create_group', {
+      group_name: name,
+      invited_members: [...newGroupSelectedMembers.keys()]
+    });
+    if (error) throw error;
+    groupId = data;
+
+    if (newGroupPhotoFile) {
+      els.createGroupSubmit.textContent = 'Uploading photo…';
+      imagePath = await uploadGroupPhoto(groupId, newGroupPhotoFile);
+      const { error: imageError } = await supabase.rpc('kt_update_group_image', {
+        target_group: groupId,
+        new_image_path: imagePath
+      });
+      if (imageError) throw imageError;
+    }
+
+    els.createGroupDialog.close();
+    clearNewGroupPhoto();
+    newGroupSelectedMembers = new Map();
+    showToast('Private group created.');
+    await loadConversations();
+
+    const group = groupConversations.find(item => item.id === groupId);
+    if (group) await openGroupConversation(group);
+  } catch (error) {
+    if (imagePath) {
+      await supabase.storage.from('kt-group-images').remove([imagePath]);
+    }
+    setMessage(els.createGroupMessage, error.message || 'Unable to create this group.');
+  } finally {
+    els.createGroupSubmit.disabled = false;
+    els.createGroupSubmit.textContent = 'Create private group';
+  }
+}
+
+async function loadActiveGroupDetails() {
+  if (!activeConversation?.id || activeChatKind !== 'group') return;
+
+  const [membersResult, groupResult] = await Promise.all([
+    supabase.from('kt_group_members')
+      .select('*')
+      .eq('group_id', activeConversation.id)
+      .order('joined_at', { ascending: true }),
+    supabase.from('kt_groups')
+      .select('*')
+      .eq('id', activeConversation.id)
+      .single()
+  ]);
+  if (membersResult.error) throw membersResult.error;
+  if (groupResult.error) throw groupResult.error;
+
+  activeConversation = groupResult.data;
+  activeGroupMembers = membersResult.data || [];
+  activeGroupMembership = activeGroupMembers.find(row => row.user_id === currentUser.id) || null;
+
+  const ids = activeGroupMembers.map(row => row.user_id);
+  const { data: profiles, error: profileError } = ids.length
+    ? await supabase.from('kt_profiles').select('*').in('id', ids)
+    : { data: [], error: null };
+  if (profileError) throw profileError;
+
+  activeGroupProfiles = new Map((profiles || []).map(profile => [profile.id, profile]));
+}
+
+async function openGroupDetailsDialog() {
+  if (activeChatKind !== 'group' || !activeConversation?.id) return;
+
+  els.groupDetailsDialog.showModal();
+  els.groupMembersList.innerHTML = '';
+  els.groupDetailsTitle.textContent = activeConversation.name || 'Private group';
+  els.groupDetailsSummary.textContent = 'Loading group details…';
+  setMessage(els.groupDetailsMessage);
+
+  try {
+    await loadActiveGroupDetails();
+    renderGroupDetails();
+  } catch (error) {
+    setMessage(els.groupDetailsMessage, error.message || 'Unable to load group details.');
+  }
+}
+
+function renderGroupDetails() {
+  const group = activeConversation;
+  const role = currentGroupRole();
+  const canManage = canManageActiveGroup();
+
+  els.groupDetailsTitle.textContent = group.name || 'Private group';
+  els.groupDetailsSummary.textContent =
+    `${activeGroupMembers.length} of 25 members · Your role: ${role}`;
+  els.groupMemberCount.textContent = `${activeGroupMembers.length} of 25`;
+  els.groupAdminSettings.classList.toggle('hidden', !canManage);
+  els.renameGroupInput.value = group.name || '';
+  setGroupAvatar(els.groupSettingsPhotoPreview, group);
+  els.leaveGroupButton.textContent = isActiveGroupOwner()
+    ? 'Transfer ownership before leaving'
+    : 'Leave group';
+  els.leaveGroupButton.disabled = isActiveGroupOwner();
+
+  els.groupMembersList.innerHTML = '';
+  const roleOrder = { owner: 0, admin: 1, member: 2 };
+  const sorted = [...activeGroupMembers].sort((a, b) =>
+    roleOrder[a.role] - roleOrder[b.role]
+    || String(activeGroupProfiles.get(a.user_id)?.full_name || '')
+      .localeCompare(String(activeGroupProfiles.get(b.user_id)?.full_name || ''))
+  );
+
+  for (const member of sorted) {
+    const profile = activeGroupProfiles.get(member.user_id) || {
+      id: member.user_id,
+      full_name: 'Khmer Together Member',
+      username: 'member'
+    };
+    els.groupMembersList.appendChild(renderGroupMemberRow(member, profile));
+  }
+
+  renderGroupAddMemberResults();
+}
+
+function renderGroupMemberRow(member, profile) {
+  const row = document.createElement('article');
+  row.className = 'group-member-row';
+
+  const identity = document.createElement('button');
+  identity.type = 'button';
+  identity.className = 'group-member-identity';
+
+  const avatar = document.createElement('span');
+  avatar.className = 'avatar';
+  setAvatar(avatar, profile);
+
+  const text = document.createElement('span');
+  const name = document.createElement('strong');
+  name.textContent = profile.full_name || 'Khmer Together Member';
+  const username = document.createElement('small');
+  username.textContent = `@${profile.username || 'member'} · ${member.role}`;
+  text.append(name, username);
+  identity.append(avatar, text);
+
+  if (profile.id !== currentUser.id) {
+    identity.addEventListener('click', () => {
+      els.groupDetailsDialog.close();
+      openMemberProfile(profile.id, { returnMode: 'messages' });
+    });
+  } else {
+    identity.disabled = true;
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'group-member-actions';
+
+  if (profile.id !== currentUser.id) {
+    const block = document.createElement('button');
+    block.type = 'button';
+    block.className = 'group-member-action';
+    block.textContent = 'Block';
+    block.addEventListener('click', () => blockUser(profile.id, profile));
+    actions.appendChild(block);
+  }
+
+  if (isActiveGroupOwner() && profile.id !== currentUser.id) {
+    const transfer = document.createElement('button');
+    transfer.type = 'button';
+    transfer.className = 'group-member-action';
+    transfer.textContent = 'Make owner';
+    transfer.addEventListener('click', () => transferGroupOwnership(profile));
+    actions.appendChild(transfer);
+
+    const roleButton = document.createElement('button');
+    roleButton.type = 'button';
+    roleButton.className = 'group-member-action';
+    roleButton.textContent = member.role === 'admin' ? 'Remove admin' : 'Make admin';
+    roleButton.addEventListener('click', () =>
+      setGroupMemberRole(profile, member.role === 'admin' ? 'member' : 'admin')
+    );
+    actions.appendChild(roleButton);
+  }
+
+  const canRemove =
+    canManageActiveGroup()
+    && member.role !== 'owner'
+    && profile.id !== currentUser.id
+    && (isActiveGroupOwner() || member.role === 'member');
+
+  if (canRemove) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'group-member-action danger';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => removeGroupMember(profile));
+    actions.appendChild(remove);
+  }
+
+  row.append(identity, actions);
+  return row;
+}
+
+function renderGroupAddMemberResults() {
+  if (!canManageActiveGroup()) {
+    els.groupAddMemberResults.innerHTML = '';
+    return;
+  }
+
+  const memberIds = new Set(activeGroupMembers.map(row => row.user_id));
+  const query = els.groupAddMemberSearch.value.trim().toLowerCase().replace(/^@/, '');
+  const candidates = visibleGroupCandidateProfiles()
+    .filter(profile => !memberIds.has(profile.id))
+    .filter(profile => {
+      if (!query) return true;
+      return String(profile.full_name || '').toLowerCase().includes(query)
+        || String(profile.username || '').toLowerCase().includes(query);
+    })
+    .slice(0, 20);
+
+  els.groupAddMemberResults.innerHTML = '';
+  for (const profile of candidates) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'group-member-result';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    setAvatar(avatar, profile);
+
+    const text = document.createElement('span');
+    text.className = 'group-member-result-text';
+    const name = document.createElement('strong');
+    name.textContent = profile.full_name || 'Khmer Together Member';
+    const username = document.createElement('small');
+    username.textContent = `@${profile.username || 'member'}`;
+    text.append(name, username);
+
+    const add = document.createElement('span');
+    add.className = 'group-add-symbol';
+    add.textContent = 'Add';
+
+    button.append(avatar, text, add);
+    button.addEventListener('click', () => addGroupMember(profile));
+    els.groupAddMemberResults.appendChild(button);
+  }
+}
+
+async function addGroupMember(profile) {
+  if (!canManageActiveGroup()) return;
+  if (activeGroupMembers.length >= 25) {
+    showToast('This group already has 25 members.');
+    return;
+  }
+
+  try {
+    const { error } = await supabase.rpc('kt_add_group_members', {
+      target_group: activeConversation.id,
+      new_members: [profile.id]
+    });
+    if (error) throw error;
+    showToast(`${profile.full_name || 'Member'} was added.`);
+    els.groupAddMemberSearch.value = '';
+    await loadActiveGroupDetails();
+    renderGroupDetails();
+    await loadConversations();
+  } catch (error) {
+    showToast(error.message || 'Unable to add this member.');
+  }
+}
+
+async function renameActiveGroup(event) {
+  event.preventDefault();
+  if (!canManageActiveGroup()) return;
+  const name = els.renameGroupInput.value.trim();
+  if (name.length < 2) {
+    setMessage(els.groupDetailsMessage, 'Use at least 2 characters for the group name.');
+    return;
+  }
+
+  els.renameGroupButton.disabled = true;
+  try {
+    const { error } = await supabase.rpc('kt_update_group_name', {
+      target_group: activeConversation.id,
+      new_name: name
+    });
+    if (error) throw error;
+    activeConversation.name = name;
+    els.chatMemberName.textContent = name;
+    showToast('Group name updated.');
+    await loadConversations();
+    renderGroupDetails();
+  } catch (error) {
+    setMessage(els.groupDetailsMessage, error.message || 'Unable to rename this group.');
+  } finally {
+    els.renameGroupButton.disabled = false;
+  }
+}
+
+async function updateActiveGroupPhoto() {
+  const file = els.groupSettingsPhotoInput.files?.[0];
+  els.groupSettingsPhotoInput.value = '';
+  if (!file || !canManageActiveGroup()) return;
+
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    showToast('Choose a JPG, PNG, or WebP group photo.');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('The group photo must be 5 MB or smaller.');
+    return;
+  }
+
+  let newPath = null;
+  try {
+    newPath = await uploadGroupPhoto(activeConversation.id, file);
+    const oldPath = activeConversation.image_path || null;
+    const { error } = await supabase.rpc('kt_update_group_image', {
+      target_group: activeConversation.id,
+      new_image_path: newPath
+    });
+    if (error) throw error;
+
+    activeConversation.image_path = newPath;
+    groupImageUrlCache.delete(oldPath);
+    setGroupAvatar(els.chatMemberAvatar, activeConversation);
+    setGroupAvatar(els.groupSettingsPhotoPreview, activeConversation);
+    if (oldPath) await supabase.storage.from('kt-group-images').remove([oldPath]);
+    showToast('Group photo updated.');
+    await loadConversations();
+  } catch (error) {
+    if (newPath) await supabase.storage.from('kt-group-images').remove([newPath]);
+    showToast(error.message || 'Unable to update the group photo.');
+  }
+}
+
+async function removeActiveGroupPhoto() {
+  if (!canManageActiveGroup() || !activeConversation.image_path) return;
+  if (!confirm('Remove the group photo?')) return;
+
+  const oldPath = activeConversation.image_path;
+  try {
+    const { error } = await supabase.rpc('kt_update_group_image', {
+      target_group: activeConversation.id,
+      new_image_path: null
+    });
+    if (error) throw error;
+    activeConversation.image_path = null;
+    groupImageUrlCache.delete(oldPath);
+    await supabase.storage.from('kt-group-images').remove([oldPath]);
+    setGroupAvatar(els.chatMemberAvatar, activeConversation);
+    setGroupAvatar(els.groupSettingsPhotoPreview, activeConversation);
+    showToast('Group photo removed.');
+    await loadConversations();
+  } catch (error) {
+    showToast(error.message || 'Unable to remove the group photo.');
+  }
+}
+
+async function setGroupMemberRole(profile, role) {
+  if (!isActiveGroupOwner()) return;
+  const label = role === 'admin' ? 'make this member an admin' : 'remove admin access';
+  if (!confirm(`Do you want to ${label} for ${profile.full_name}?`)) return;
+
+  try {
+    const { error } = await supabase.rpc('kt_set_group_member_role', {
+      target_group: activeConversation.id,
+      target_user: profile.id,
+      new_role: role
+    });
+    if (error) throw error;
+    await loadActiveGroupDetails();
+    renderGroupDetails();
+    showToast('Member role updated.');
+  } catch (error) {
+    showToast(error.message || 'Unable to change this member role.');
+  }
+}
+
+async function transferGroupOwnership(profile) {
+  if (!isActiveGroupOwner()) return;
+  if (!confirm(
+    `Transfer ownership to ${profile.full_name}? You will become a group admin.`
+  )) return;
+
+  try {
+    const { error } = await supabase.rpc('kt_transfer_group_ownership', {
+      target_group: activeConversation.id,
+      new_owner: profile.id
+    });
+    if (error) throw error;
+    await loadActiveGroupDetails();
+    renderGroupDetails();
+    showToast('Group ownership transferred.');
+  } catch (error) {
+    showToast(error.message || 'Unable to transfer ownership.');
+  }
+}
+
+async function removeGroupMember(profile) {
+  if (!canManageActiveGroup()) return;
+  if (!confirm(`Remove ${profile.full_name} from this private group?`)) return;
+
+  try {
+    const { error } = await supabase.rpc('kt_remove_group_member', {
+      target_group: activeConversation.id,
+      target_user: profile.id
+    });
+    if (error) throw error;
+    await loadActiveGroupDetails();
+    renderGroupDetails();
+    showToast('Member removed.');
+  } catch (error) {
+    showToast(error.message || 'Unable to remove this member.');
+  }
+}
+
+async function leaveActiveGroup() {
+  if (activeChatKind !== 'group' || isActiveGroupOwner()) return;
+  if (!confirm(`Leave “${activeConversation.name}”? You will lose access to its messages.`)) {
+    return;
+  }
+
+  try {
+    const { error } = await supabase.rpc('kt_leave_group', {
+      target_group: activeConversation.id
+    });
+    if (error) throw error;
+
+    els.groupDetailsDialog.close();
+    activeConversation = null;
+    activeChatKind = 'direct';
+    showToast('You left the private group.');
+    await loadConversations();
+    switchView('messages', false, false);
+  } catch (error) {
+    setMessage(els.groupDetailsMessage, error.message || 'Unable to leave this group.');
+  }
+}
+
+function openGroupReportDialog() {
+  if (activeChatKind !== 'group' || !activeConversation?.id) return;
+  reportingGroupId = activeConversation.id;
+  els.groupReportReason.value = '';
+  els.groupReportDetails.value = '';
+  setMessage(els.groupReportMessage);
+
+  els.reportedGroupPreview.innerHTML = '';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  setGroupAvatar(avatar, activeConversation);
+
+  const text = document.createElement('div');
+  const name = document.createElement('strong');
+  name.textContent = activeConversation.name || 'Private group';
+  const note = document.createElement('span');
+  note.textContent = `${activeGroupMembers.length || ''} private group members`;
+  text.append(name, note);
+  els.reportedGroupPreview.append(avatar, text);
+  els.groupReportDialog.showModal();
+}
+
+async function submitGroupReport(event) {
+  event.preventDefault();
+  if (!reportingGroupId) return;
+
+  const reason = els.groupReportReason.value;
+  const details = els.groupReportDetails.value.trim();
+  if (!reason || !details) {
+    setMessage(els.groupReportMessage, 'Choose a reason and explain what happened.');
+    return;
+  }
+
+  els.submitGroupReport.disabled = true;
+  els.submitGroupReport.textContent = 'Submitting…';
+  try {
+    const { error } = await supabase.from('kt_group_reports').insert({
+      group_id: reportingGroupId,
+      reporter_id: currentUser.id,
+      reason,
+      details
+    });
+    if (error) throw error;
+
+    els.groupReportDialog.close();
+    reportingGroupId = null;
+    showToast('Group report submitted privately.');
+  } catch (error) {
+    setMessage(els.groupReportMessage, error.message || 'Unable to report this group.');
+  } finally {
+    els.submitGroupReport.disabled = false;
+    els.submitGroupReport.textContent = 'Submit group report';
+  }
+}
+
 function updateMessageBadges() {
   const count = Math.max(0, Number(unreadMessageCount) || 0);
   const label = count > 99 ? '99+' : String(count);
@@ -2257,13 +3082,21 @@ function updateMessageBadges() {
 async function loadUnreadMessageCount() {
   if (!currentUser) return;
   try {
-    const { count, error } = await supabase
-      .from('kt_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('recipient_id', currentUser.id)
-      .is('read_at', null);
-    if (error) throw error;
-    unreadMessageCount = count || 0;
+    const [directResult, groupResult] = await Promise.all([
+      supabase
+        .from('kt_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', currentUser.id)
+        .is('read_at', null),
+      supabase.rpc('kt_group_unread_counts')
+    ]);
+
+    if (directResult.error) throw directResult.error;
+    if (groupResult.error) throw groupResult.error;
+
+    const groupUnread = (groupResult.data || [])
+      .reduce((sum, item) => sum + Number(item.unread_count || 0), 0);
+    unreadMessageCount = (directResult.count || 0) + groupUnread;
     updateMessageBadges();
   } catch (error) {
     console.warn('Unable to load unread message count:', error);
@@ -2284,45 +3117,110 @@ async function loadConversations() {
   els.messagesRefreshButton.disabled = true;
 
   try {
-    const { data: conversationRows, error: conversationError } = await supabase
-      .from('kt_conversations')
-      .select('*')
-      .or(`user_one.eq.${currentUser.id},user_two.eq.${currentUser.id}`)
-      .order('updated_at', { ascending: false })
-      .limit(200);
-    if (conversationError) throw conversationError;
+    const [directConversationResult, membershipsResult, directUnreadResult] =
+      await Promise.all([
+        supabase
+          .from('kt_conversations')
+          .select('*')
+          .or(`user_one.eq.${currentUser.id},user_two.eq.${currentUser.id}`)
+          .order('updated_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('kt_group_members')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('joined_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('kt_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('recipient_id', currentUser.id)
+          .is('read_at', null)
+      ]);
 
-    conversations = conversationRows || [];
-    const conversationIds = conversations.map(item => item.id);
+    if (directConversationResult.error) throw directConversationResult.error;
+    if (membershipsResult.error) throw membershipsResult.error;
+    if (directUnreadResult.error) throw directUnreadResult.error;
+
+    conversations = directConversationResult.data || [];
+    groupMemberships = membershipsResult.data || [];
+
+    const directIds = conversations.map(item => item.id);
     const otherIds = [...new Set(conversations.map(otherConversationUser))];
+    const groupIds = groupMemberships.map(item => item.group_id);
 
-    const [messagesResult, profilesResult, unreadResult] = await Promise.all([
-      conversationIds.length
+    const [
+      directMessagesResult,
+      directProfilesResult,
+      groupsResult,
+      groupMessagesResult,
+      groupMembersResult,
+      groupUnreadResult
+    ] = await Promise.all([
+      directIds.length
         ? supabase.from('kt_messages')
             .select('*')
-            .in('conversation_id', conversationIds)
+            .in('conversation_id', directIds)
             .order('created_at', { ascending: false })
             .limit(3000)
         : Promise.resolve({ data: [], error: null }),
       otherIds.length
         ? supabase.from('kt_profiles').select('*').in('id', otherIds)
         : Promise.resolve({ data: [], error: null }),
-      supabase.from('kt_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('recipient_id', currentUser.id)
-        .is('read_at', null)
+      groupIds.length
+        ? supabase.from('kt_groups')
+            .select('*')
+            .in('id', groupIds)
+            .order('updated_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+      groupIds.length
+        ? supabase.from('kt_group_messages')
+            .select('*')
+            .in('group_id', groupIds)
+            .order('created_at', { ascending: false })
+            .limit(3000)
+        : Promise.resolve({ data: [], error: null }),
+      groupIds.length
+        ? supabase.from('kt_group_members')
+            .select('*')
+            .in('group_id', groupIds)
+            .limit(5000)
+        : Promise.resolve({ data: [], error: null }),
+      supabase.rpc('kt_group_unread_counts')
     ]);
 
-    if (messagesResult.error) throw messagesResult.error;
-    if (profilesResult.error) throw profilesResult.error;
-    if (unreadResult.error) throw unreadResult.error;
+    for (const result of [
+      directMessagesResult, directProfilesResult, groupsResult,
+      groupMessagesResult, groupMembersResult, groupUnreadResult
+    ]) {
+      if (result.error) throw result.error;
+    }
 
-    conversationMessages = messagesResult.data || [];
+    conversationMessages = directMessagesResult.data || [];
     conversationProfiles = new Map(
-      (profilesResult.data || []).map(profile => [profile.id, profile])
+      (directProfilesResult.data || []).map(profile => [profile.id, profile])
     );
+    groupConversations = groupsResult.data || [];
+    groupMessages = groupMessagesResult.data || [];
+    groupMemberRows = groupMembersResult.data || [];
 
-    unreadMessageCount = unreadResult.count || 0;
+    const groupMemberProfileIds = [...new Set(
+      groupMemberRows.map(item => item.user_id)
+    )];
+    if (groupMemberProfileIds.length) {
+      const { data, error } = await supabase
+        .from('kt_profiles')
+        .select('*')
+        .in('id', groupMemberProfileIds);
+      if (error) throw error;
+      groupProfiles = new Map((data || []).map(profile => [profile.id, profile]));
+    } else {
+      groupProfiles = new Map();
+    }
+
+    const groupUnread = (groupUnreadResult.data || [])
+      .reduce((sum, item) => sum + Number(item.unread_count || 0), 0);
+    unreadMessageCount = (directUnreadResult.count || 0) + groupUnread;
     updateMessageBadges();
     renderConversations();
   } catch (error) {
@@ -2339,32 +3237,25 @@ async function loadConversations() {
 
 function renderConversations() {
   els.conversationsList.innerHTML = '';
-  els.messagesEmpty.classList.toggle('hidden', conversations.length > 0);
+
+  const items = [
+    ...conversations.map(directConversationItem),
+    ...groupConversations.map(groupConversationItem)
+  ].sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+
+  els.messagesEmpty.classList.toggle('hidden', items.length > 0);
   els.messagesSummary.textContent = unreadMessageCount
     ? `${unreadMessageCount} unread ${unreadMessageCount === 1 ? 'message' : 'messages'}`
-    : 'Your one-to-one conversations.';
+    : 'Private conversations and groups.';
 
-  for (const conversation of conversations) {
-    const otherId = otherConversationUser(conversation);
-    const profile = conversationProfiles.get(otherId) || {
-      id: otherId,
-      full_name: 'Khmer Together Member',
-      username: 'member'
-    };
-    const messages = conversationMessages.filter(message => message.conversation_id === conversation.id);
-    const latest = messages[0] || null;
-    const unread = messages.filter(message =>
-      message.recipient_id === currentUser.id && !message.read_at
-    ).length;
-
+  for (const item of items) {
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = `card conversation-card ${unread ? 'unread' : ''}`.trim();
-    card.addEventListener('click', () => openConversation(conversation, profile));
+    card.className =
+      `card conversation-card ${item.unread ? 'unread' : ''} ${item.kind === 'group' ? 'group-conversation-card' : ''}`.trim();
 
     const avatar = document.createElement('span');
     avatar.className = 'avatar conversation-avatar';
-    setAvatar(avatar, profile);
 
     const content = document.createElement('span');
     content.className = 'conversation-content';
@@ -2372,36 +3263,65 @@ function renderConversations() {
     const top = document.createElement('span');
     top.className = 'conversation-topline';
     const name = document.createElement('strong');
-    name.textContent = profile.full_name || 'Khmer Together Member';
     const time = document.createElement('time');
-    time.textContent = timeAgo(latest?.created_at || conversation.updated_at);
+    time.textContent = timeAgo(item.latest?.created_at || item.updated_at);
     top.append(name, time);
 
     const preview = document.createElement('span');
     preview.className = 'conversation-preview';
-    if (!latest) {
-      preview.textContent = 'Start the conversation.';
+    const username = document.createElement('small');
+
+    if (item.kind === 'group') {
+      name.textContent = item.group.name || 'Private group';
+      setGroupAvatar(avatar, item.group);
+      username.textContent =
+        `${groupMemberRows.filter(row => row.group_id === item.id).length} members · Private group`;
+      if (!item.latest) {
+        preview.textContent = 'Start the group conversation.';
+      } else {
+        const sender = groupProfiles.get(item.latest.sender_id);
+        const prefix = item.latest.sender_id === currentUser.id
+          ? 'You: '
+          : `${sender?.full_name || 'Member'}: `;
+        preview.textContent = `${prefix}${messagePreviewText(item.latest)}`;
+      }
+      card.addEventListener('click', () => openGroupConversation(item.group));
     } else {
-      const prefix = latest.sender_id === currentUser.id ? 'You: ' : '';
-      preview.textContent = `${prefix}${messagePreviewText(latest)}`;
+      name.textContent = item.profile.full_name || 'Khmer Together Member';
+      setAvatar(avatar, item.profile);
+      username.textContent = `@${item.profile.username || 'member'}`;
+      if (!item.latest) {
+        preview.textContent = 'Start the conversation.';
+      } else {
+        const prefix = item.latest.sender_id === currentUser.id ? 'You: ' : '';
+        preview.textContent = `${prefix}${messagePreviewText(item.latest)}`;
+      }
+      card.addEventListener('click', () =>
+        openConversation(item.conversation, item.profile)
+      );
     }
 
-    const username = document.createElement('small');
-    username.textContent = `@${profile.username || 'member'}`;
     content.append(top, preview, username);
-
     card.append(avatar, content);
-    if (unread) {
+
+    if (item.kind === 'group') {
+      const groupBadge = document.createElement('span');
+      groupBadge.className = 'conversation-kind-badge';
+      groupBadge.textContent = 'GROUP';
+      card.appendChild(groupBadge);
+    }
+
+    if (item.unread) {
       const badge = document.createElement('strong');
       badge.className = 'conversation-unread-badge';
-      badge.textContent = unread > 99 ? '99+' : String(unread);
+      badge.textContent = item.unread > 99 ? '99+' : String(item.unread);
       card.appendChild(badge);
     }
     els.conversationsList.appendChild(card);
   }
 }
 
-async function startConversation(profile) {
+async function startConversation(profile) {async function startConversation(profile) {
   if (!profile || profile.id === currentUser.id) return;
   try {
     const { data, error } = await supabase.rpc('kt_get_or_create_conversation', {
@@ -2428,6 +3348,10 @@ async function openConversation(conversation, profile = null) {
   const changingConversation = activeConversation?.id !== conversation.id;
   if (changingConversation) clearChatAttachmentDraft();
   activeConversation = conversation;
+  activeChatKind = 'direct';
+  activeGroupMembership = null;
+  activeGroupMembers = [];
+  activeGroupProfiles = new Map();
   const otherId = otherConversationUser(conversation);
   activeChatProfile = profile || conversationProfiles.get(otherId) || {
     id: otherId,
@@ -2474,11 +3398,103 @@ async function openConversation(conversation, profile = null) {
   }
 }
 
+async function openGroupConversation(group) {
+  if (!group?.id) return;
+
+  const changingConversation =
+    activeConversation?.id !== group.id || activeChatKind !== 'group';
+  if (changingConversation) clearChatAttachmentDraft();
+
+  activeConversation = group;
+  activeChatKind = 'group';
+  activeChatProfile = null;
+  activeChatMessages = [];
+  activeChatMessagingAllowed = true;
+
+  switchView('chat', false, false);
+  setGroupAvatar(els.chatMemberAvatar, group);
+  els.chatMemberName.textContent = group.name || 'Private group';
+  els.chatMemberUsername.textContent = 'Loading members…';
+  els.chatMessages.innerHTML = '';
+  els.chatEmpty.classList.add('hidden');
+  els.chatLoading.classList.remove('hidden');
+  setMessage(els.chatMessageStatus);
+
+  try {
+    const [messagesResult, membersResult] = await Promise.all([
+      supabase.from('kt_group_messages')
+        .select('*')
+        .eq('group_id', group.id)
+        .order('created_at', { ascending: true })
+        .limit(2000),
+      supabase.from('kt_group_members')
+        .select('*')
+        .eq('group_id', group.id)
+        .order('joined_at', { ascending: true })
+    ]);
+
+    if (messagesResult.error) throw messagesResult.error;
+    if (membersResult.error) throw membersResult.error;
+
+    activeChatMessages = messagesResult.data || [];
+    activeGroupMembers = membersResult.data || [];
+    activeGroupMembership =
+      activeGroupMembers.find(item => item.user_id === currentUser.id) || null;
+    activeChatMessagingAllowed = Boolean(activeGroupMembership);
+
+    const userIds = [...new Set(activeGroupMembers.map(item => item.user_id))];
+    const { data: profiles, error: profileError } = userIds.length
+      ? await supabase.from('kt_profiles').select('*').in('id', userIds)
+      : { data: [], error: null };
+    if (profileError) throw profileError;
+    activeGroupProfiles = new Map(
+      (profiles || []).map(profile => [profile.id, profile])
+    );
+
+    els.chatMemberUsername.textContent =
+      `${activeGroupMembers.length} members · ${currentGroupRole()}`;
+    updateChatAvailability();
+    await markActiveConversationRead();
+    renderChatMessages();
+    await loadUnreadMessageCount();
+  } catch (error) {
+    els.chatMessages.innerHTML = '';
+    activeChatMessagingAllowed = false;
+    updateChatAvailability();
+    setMessage(
+      els.chatMessageStatus,
+      error.message || 'Unable to load this private group.'
+    );
+  } finally {
+    els.chatLoading.classList.add('hidden');
+  }
+}
+
 function updateChatAvailability() {
-  els.chatBlockedNotice.classList.toggle('hidden', activeChatMessagingAllowed);
   els.chatComposer.classList.toggle('hidden', !activeChatMessagingAllowed);
-  els.chatBlockButton.textContent = activeChatMessagingAllowed ? 'Block' : 'Blocked';
-  els.chatBlockButton.disabled = !activeChatMessagingAllowed;
+
+  if (activeChatKind === 'group') {
+    els.chatPrivacyNote.textContent =
+      'Only current group members can read these messages and attachments.';
+    els.chatBlockedNotice.textContent =
+      'You are no longer a member of this group. You cannot send or read new messages.';
+    els.chatBlockedNotice.classList.toggle('hidden', activeChatMessagingAllowed);
+    els.chatBlockButton.textContent = canManageActiveGroup() ? 'Manage' : 'Members';
+    els.chatBlockButton.classList.remove('danger');
+    els.chatBlockButton.disabled = !activeChatMessagingAllowed;
+    els.chatMemberButton.setAttribute('aria-label', 'Open group details');
+  } else {
+    els.chatPrivacyNote.textContent =
+      'Only you and this member can read these messages.';
+    els.chatBlockedNotice.textContent =
+      'Messaging is unavailable because one of you has blocked the other. You can still read the conversation history.';
+    els.chatBlockedNotice.classList.toggle('hidden', activeChatMessagingAllowed);
+    els.chatBlockButton.textContent = activeChatMessagingAllowed ? 'Block' : 'Blocked';
+    els.chatBlockButton.classList.add('danger');
+    els.chatBlockButton.disabled = !activeChatMessagingAllowed;
+    els.chatMemberButton.setAttribute('aria-label', 'Open member profile');
+  }
+
   if (!activeChatMessagingAllowed) clearChatAttachmentDraft();
 }
 
@@ -2489,12 +3505,41 @@ function renderChatMessages() {
   for (const message of activeChatMessages) {
     const mine = message.sender_id === currentUser.id;
     const row = document.createElement('div');
-    row.className = `chat-message-row ${mine ? 'mine' : 'theirs'}`;
+    row.className =
+      `chat-message-row ${mine ? 'mine' : 'theirs'} ${activeChatKind === 'group' ? 'group-message-row' : ''}`.trim();
     row.dataset.messageId = message.id;
+
+    if (activeChatKind === 'group' && !mine) {
+      const sender = activeGroupProfiles.get(message.sender_id) || {
+        full_name: 'Khmer Together Member',
+        username: 'member'
+      };
+      const avatar = document.createElement('button');
+      avatar.type = 'button';
+      avatar.className = 'avatar group-message-avatar';
+      setAvatar(avatar, sender);
+      avatar.addEventListener('click', () =>
+        openMemberProfile(message.sender_id, { returnMode: 'messages' })
+      );
+      row.appendChild(avatar);
+    }
 
     const bubble = document.createElement('div');
     const attachments = messageAttachments(message);
-    bubble.className = `chat-message-bubble ${attachments.length ? 'has-attachment' : ''}`.trim();
+    bubble.className =
+      `chat-message-bubble ${attachments.length ? 'has-attachment' : ''}`.trim();
+
+    if (activeChatKind === 'group' && !mine) {
+      const sender = activeGroupProfiles.get(message.sender_id);
+      const senderName = document.createElement('button');
+      senderName.type = 'button';
+      senderName.className = 'group-message-sender';
+      senderName.textContent = sender?.full_name || 'Khmer Together Member';
+      senderName.addEventListener('click', () =>
+        openMemberProfile(message.sender_id, { returnMode: 'messages' })
+      );
+      bubble.appendChild(senderName);
+    }
 
     if (attachments.length) {
       const attachment = document.createElement('div');
@@ -2518,7 +3563,10 @@ function renderChatMessages() {
 
     if (mine) {
       const receipt = document.createElement('span');
-      receipt.textContent = message.read_at ? 'Read' : 'Sent';
+      receipt.textContent =
+        activeChatKind === 'group'
+          ? 'Sent'
+          : (message.read_at ? 'Read' : 'Sent');
       meta.append(document.createTextNode(' · '), receipt);
 
       const deleteButton = document.createElement('button');
@@ -2541,7 +3589,8 @@ function renderChatMessages() {
 
 async function sendChatMessage(event) {
   event.preventDefault();
-  if (!activeConversation || !activeChatProfile || !activeChatMessagingAllowed) return;
+  if (!activeConversation || !activeChatMessagingAllowed) return;
+  if (activeChatKind === 'direct' && !activeChatProfile) return;
 
   if (chatMediaRecorder?.state === 'recording') {
     setMessage(els.chatMessageStatus, 'Stop the voice recording before sending.');
@@ -2560,11 +3609,16 @@ async function sendChatMessage(event) {
     ? [{
         type: 'audio',
         blob: recordedChatAudioBlob,
-        mime: normalizeAttachmentMime(recordedChatAudioBlob.type || 'audio/webm'),
+        mime: normalizeAttachmentMime(
+          recordedChatAudioBlob.type || 'audio/webm'
+        ),
         size: recordedChatAudioBlob.size,
         duration: Math.max(
           1,
-          Math.min(CHAT_AUDIO_MAX_SECONDS, Math.round(recordedChatAudioDuration))
+          Math.min(
+            CHAT_AUDIO_MAX_SECONDS,
+            Math.round(recordedChatAudioDuration)
+          )
         )
       }]
     : [];
@@ -2579,13 +3633,19 @@ async function sendChatMessage(event) {
   }
 
   const uploads = [];
-  setChatComposerBusy(true, attachmentEntries.length ? 'Uploading…' : 'Sending…');
+  setChatComposerBusy(
+    true,
+    attachmentEntries.length ? 'Uploading…' : 'Sending…'
+  );
   setMessage(els.chatMessageStatus);
 
   try {
     for (let index = 0; index < attachmentEntries.length; index += 1) {
       const attachment = attachmentEntries[index];
-      const extension = extensionForAttachment(attachment.type, attachment.mime);
+      const extension = extensionForAttachment(
+        attachment.type,
+        attachment.mime
+      );
       const path =
         `${currentUser.id}/${activeConversation.id}/${crypto.randomUUID()}.${extension}`;
 
@@ -2613,40 +3673,69 @@ async function sendChatMessage(event) {
     }
 
     els.sendMessageButton.textContent = 'Sending…';
-    const first = uploads[0] || null;
-    const { error } = await supabase.from('kt_messages').insert({
-      conversation_id: activeConversation.id,
-      sender_id: currentUser.id,
-      recipient_id: activeChatProfile.id,
-      body: body || null,
-      attachments: uploads,
-      attachment_type: first?.type || null,
-      attachment_path: first?.path || null,
-      attachment_mime: first?.mime || null,
-      attachment_size_bytes: first?.size || null,
-      audio_duration_seconds: first?.duration || null
-    });
-    if (error) throw error;
+
+    if (activeChatKind === 'group') {
+      const { error } = await supabase.from('kt_group_messages').insert({
+        group_id: activeConversation.id,
+        sender_id: currentUser.id,
+        body: body || null,
+        attachments: uploads
+      });
+      if (error) throw error;
+    } else {
+      const first = uploads[0] || null;
+      const { error } = await supabase.from('kt_messages').insert({
+        conversation_id: activeConversation.id,
+        sender_id: currentUser.id,
+        recipient_id: activeChatProfile.id,
+        body: body || null,
+        attachments: uploads,
+        attachment_type: first?.type || null,
+        attachment_path: first?.path || null,
+        attachment_mime: first?.mime || null,
+        attachment_size_bytes: first?.size || null,
+        audio_duration_seconds: first?.duration || null
+      });
+      if (error) throw error;
+    }
 
     els.chatMessageInput.value = '';
     clearChatAttachmentDraft();
-    await openConversation(activeConversation, activeChatProfile);
+
+    if (activeChatKind === 'group') {
+      await openGroupConversation(activeConversation);
+    } else {
+      await openConversation(activeConversation, activeChatProfile);
+    }
   } catch (error) {
     if (uploads.length) {
       await supabase.storage
         .from('kt-message-attachments')
         .remove(uploads.map(item => item.path));
     }
-    setMessage(els.chatMessageStatus, error.message || 'Unable to send this message.');
+    setMessage(
+      els.chatMessageStatus,
+      error.message || 'Unable to send this message.'
+    );
   } finally {
     setChatComposerBusy(false);
   }
 }
 
-
-async function markActiveConversationRead() {
+async function markActiveConversationRead() {async function markActiveConversationRead() {
   if (!activeConversation) return;
   try {
+    if (activeChatKind === 'group') {
+      const { error } = await supabase.rpc('kt_mark_group_read', {
+        target_group: activeConversation.id
+      });
+      if (error) throw error;
+      if (activeGroupMembership) {
+        activeGroupMembership.last_read_at = new Date().toISOString();
+      }
+      return;
+    }
+
     const { error } = await supabase.rpc('kt_mark_conversation_read', {
       target_conversation: activeConversation.id
     });
@@ -2667,8 +3756,10 @@ async function deleteChatMessage(message) {
   if (!confirm('Delete this message for both people? This cannot be undone.')) return;
 
   try {
+    const table =
+      activeChatKind === 'group' ? 'kt_group_messages' : 'kt_messages';
     const { error } = await supabase
-      .from('kt_messages')
+      .from(table)
       .delete()
       .eq('id', message.id)
       .eq('sender_id', currentUser.id);
@@ -2802,8 +3893,54 @@ function startMessageUpdates() {
         .map(item => item.path)
         .filter(Boolean)
         .forEach(path => messageAttachmentUrlCache.delete(path));
-      if (activeConversation?.id === oldMessage.conversation_id && feedMode === 'chat') {
+      if (
+        activeChatKind === 'direct'
+        && activeConversation?.id === oldMessage.conversation_id
+        && feedMode === 'chat'
+      ) {
         activeChatMessages = activeChatMessages.filter(item => item.id !== oldMessage.id);
+        renderChatMessages();
+      }
+      if (feedMode === 'messages') await loadConversations();
+    })
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'kt_group_messages'
+    }, async payload => {
+      const message = payload.new || {};
+      const knownGroup = groupMemberships.some(item => item.group_id === message.group_id);
+      if (!knownGroup) return;
+
+      if (
+        activeChatKind === 'group'
+        && activeConversation?.id === message.group_id
+        && feedMode === 'chat'
+      ) {
+        await openGroupConversation(activeConversation);
+      } else {
+        if (message.sender_id !== currentUser.id) {
+          unreadMessageCount += 1;
+          updateMessageBadges();
+          showToast('You received a new private group message.');
+        }
+        if (feedMode === 'messages') await loadConversations();
+      }
+    })
+    .on('postgres_changes', {
+      event: 'DELETE', schema: 'public', table: 'kt_group_messages'
+    }, async payload => {
+      const oldMessage = payload.old || {};
+      messageAttachments(oldMessage)
+        .map(item => item.path)
+        .filter(Boolean)
+        .forEach(path => messageAttachmentUrlCache.delete(path));
+
+      if (
+        activeChatKind === 'group'
+        && activeConversation?.id === oldMessage.group_id
+        && feedMode === 'chat'
+      ) {
+        activeChatMessages =
+          activeChatMessages.filter(item => item.id !== oldMessage.id);
         renderChatMessages();
       }
       if (feedMode === 'messages') await loadConversations();
@@ -2814,7 +3951,11 @@ function startMessageUpdates() {
     await loadUnreadMessageCount();
     if (feedMode === 'messages') await loadConversations();
     if (feedMode === 'chat' && activeConversation) {
-      await openConversation(activeConversation, activeChatProfile);
+      if (activeChatKind === 'group') {
+        await openGroupConversation(activeConversation);
+      } else {
+        await openConversation(activeConversation, activeChatProfile);
+      }
     }
   }, 45000);
 }
@@ -2823,6 +3964,7 @@ async function stopMessageUpdates() {
   if (chatMediaRecorder?.state === 'recording') stopChatVoiceRecording(false);
   clearChatAttachmentDraft();
   messageAttachmentUrlCache.clear();
+  groupImageUrlCache.clear();
   if (messagePollTimer) {
     clearInterval(messagePollTimer);
     messagePollTimer = null;
@@ -3394,23 +4536,28 @@ async function deleteStorageFolder(bucket, userId) {
 
 async function deleteOwnPrivateMessageAttachments() {
   const paths = [];
-  let from = 0;
-  const pageSize = 1000;
 
-  while (true) {
-    const { data, error } = await supabase
-      .from('kt_messages')
-      .select('attachment_path,attachments')
-      .eq('sender_id', currentUser.id)
-      .range(from, from + pageSize - 1);
+  for (const table of ['kt_messages', 'kt_group_messages']) {
+    let from = 0;
+    const pageSize = 1000;
 
-    if (error) throw error;
-    const rows = data || [];
-    paths.push(
-      ...rows.flatMap(row => messageAttachments(row).map(item => item.path)).filter(Boolean)
-    );
-    if (rows.length < pageSize) break;
-    from += pageSize;
+    while (true) {
+      const { data, error } = await supabase
+        .from(table)
+        .select('attachment_path,attachments')
+        .eq('sender_id', currentUser.id)
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+      const rows = data || [];
+      paths.push(
+        ...rows
+          .flatMap(row => messageAttachments(row).map(item => item.path))
+          .filter(Boolean)
+      );
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
   }
 
   for (let index = 0; index < paths.length; index += 100) {
@@ -3418,6 +4565,22 @@ async function deleteOwnPrivateMessageAttachments() {
     const { error } = await supabase.storage
       .from('kt-message-attachments')
       .remove(batch);
+    if (error) throw error;
+  }
+
+  const { data: ownedGroups, error: groupError } = await supabase
+    .from('kt_groups')
+    .select('image_path')
+    .eq('owner_id', currentUser.id);
+  if (groupError) throw groupError;
+
+  const groupImagePaths = (ownedGroups || [])
+    .map(group => group.image_path)
+    .filter(Boolean);
+  if (groupImagePaths.length) {
+    const { error } = await supabase.storage
+      .from('kt-group-images')
+      .remove(groupImagePaths);
     if (error) throw error;
   }
 }
@@ -4132,19 +5295,27 @@ async function loadAdminReports() {
   els.adminRefreshButton.disabled = true;
 
   try {
-    const [postReportsResult, memberReportsResult, conversationReportsResult] = await Promise.all([
+    const [
+      postReportsResult,
+      memberReportsResult,
+      conversationReportsResult,
+      groupReportsResult
+    ] = await Promise.all([
       supabase.from('kt_reports').select('*').order('created_at', { ascending: false }).limit(200),
       supabase.from('kt_member_reports').select('*').order('created_at', { ascending: false }).limit(200),
-      supabase.from('kt_conversation_reports').select('*').order('created_at', { ascending: false }).limit(200)
+      supabase.from('kt_conversation_reports').select('*').order('created_at', { ascending: false }).limit(200),
+      supabase.from('kt_group_reports').select('*').order('created_at', { ascending: false }).limit(200)
     ]);
 
     if (postReportsResult.error) throw postReportsResult.error;
     if (memberReportsResult.error) throw memberReportsResult.error;
     if (conversationReportsResult.error) throw conversationReportsResult.error;
+    if (groupReportsResult.error) throw groupReportsResult.error;
 
     const postReports = postReportsResult.data || [];
     const memberReports = memberReportsResult.data || [];
     const conversationReports = conversationReportsResult.data || [];
+    const groupReports = groupReportsResult.data || [];
     const postIds = [...new Set(postReports.map(report => report.post_id).filter(Boolean))];
     let posts = [];
 
@@ -4160,6 +5331,7 @@ async function loadAdminReports() {
       ...memberReports.map(report => report.reported_id),
       ...conversationReports.map(report => report.reporter_id),
       ...conversationReports.map(report => report.reported_id),
+      ...groupReports.map(report => report.reporter_id),
       ...posts.map(post => post.user_id)
     ].filter(Boolean))];
 
@@ -4170,7 +5342,16 @@ async function loadAdminReports() {
       profiles = data || [];
     }
 
+    const groupIds = [...new Set(groupReports.map(report => report.group_id).filter(Boolean))];
+    let reportedGroups = [];
+    if (groupIds.length) {
+      const { data, error } = await supabase.from('kt_groups').select('*').in('id', groupIds);
+      if (error) throw error;
+      reportedGroups = data || [];
+    }
+
     const postMap = new Map(posts.map(post => [post.id, post]));
+    const groupMap = new Map(reportedGroups.map(group => [group.id, group]));
     const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
 
     const preparedPostReports = postReports.map(report => {
@@ -4194,10 +5375,17 @@ async function loadAdminReports() {
       reportedMember: profileMap.get(report.reported_id) || null
     }));
 
+    const preparedGroupReports = groupReports.map(report => ({
+      ...report, kind: 'group',
+      reporter: profileMap.get(report.reporter_id) || null,
+      group: groupMap.get(report.group_id) || null
+    }));
+
     adminReports = [
       ...preparedPostReports,
       ...preparedMemberReports,
-      ...preparedConversationReports
+      ...preparedConversationReports,
+      ...preparedGroupReports
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     renderAdminReports();
@@ -4219,8 +5407,11 @@ function renderAdminReports() {
   const visible = filter === 'all' ? adminReports : adminReports.filter(report => report.status === filter);
   const openCount = adminReports.filter(report => report.status === 'open').length;
   const reviewingCount = adminReports.filter(report => report.status === 'reviewing').length;
-  const conversationCount = adminReports.filter(report => report.kind === 'conversation').length;
-  els.adminSummary.textContent = `${openCount} open · ${reviewingCount} reviewing · ${conversationCount} conversation reports · ${adminReports.length} total`;
+  const privateReportCount = adminReports.filter(
+    report => report.kind === 'conversation' || report.kind === 'group'
+  ).length;
+  els.adminSummary.textContent =
+    `${openCount} open · ${reviewingCount} reviewing · ${privateReportCount} private-message reports · ${adminReports.length} total`;
   els.adminReportsList.innerHTML = '';
   els.adminReportsEmpty.classList.toggle('hidden', visible.length > 0);
   for (const report of visible) els.adminReportsList.appendChild(renderAdminReportCard(report));
@@ -4233,7 +5424,11 @@ function renderAdminReportCard(report) {
   header.className = 'admin-report-header';
   const titleWrap = document.createElement('div');
   const reason = document.createElement('strong');
-  const kindLabel = report.kind === 'conversation' ? 'Conversation report' : report.kind === 'member' ? 'Member report' : 'Post report';
+  const kindLabel =
+    report.kind === 'conversation' ? 'Conversation report'
+    : report.kind === 'group' ? 'Private group report'
+    : report.kind === 'member' ? 'Member report'
+    : 'Post report';
   reason.textContent = `${kindLabel} · ${REPORT_REASON_LABELS[report.reason] || report.reason}`;
   const meta = document.createElement('span');
   meta.textContent = `${timeAgo(report.created_at)} · Reported by ${report.reporter?.full_name || 'Member'} (@${report.reporter?.username || 'member'})`;
@@ -4268,14 +5463,26 @@ function renderAdminReportCard(report) {
     const memberBox = document.createElement('section');
     memberBox.className = 'reported-member-admin-preview';
     const member = report.reportedMember;
-    const avatar=document.createElement('div'); avatar.className='avatar'; setAvatar(avatar, member || {});
+    const avatar=document.createElement('div'); avatar.className='avatar';
+    if (report.kind === 'group') setGroupAvatar(avatar, report.group || {});
+    else setAvatar(avatar, member || {});
+
     const identity=document.createElement('div');
-    const name=document.createElement('strong'); name.textContent=member?.full_name || 'Member unavailable';
-    const username=document.createElement('span'); username.textContent=`@${member?.username || 'member'}`;
+    const name=document.createElement('strong');
+    name.textContent = report.kind === 'group'
+      ? (report.group?.name || 'Group unavailable')
+      : (member?.full_name || 'Member unavailable');
+    const username=document.createElement('span');
+    username.textContent = report.kind === 'group'
+      ? 'Private group'
+      : `@${member?.username || 'member'}`;
     const note=document.createElement('p');
-    note.textContent = report.kind === 'conversation'
-      ? 'Conversation report only. Private message contents are not shown to administrators.'
-      : (member?.bio || 'No bio available.');
+    note.textContent =
+      report.kind === 'conversation'
+        ? 'Conversation report only. Private message contents are not shown to administrators.'
+        : report.kind === 'group'
+          ? 'Private group report only. Group message contents and attachments are not automatically shown.'
+          : (member?.bio || 'No bio available.');
     identity.append(name, username, note); memberBox.append(avatar, identity); card.appendChild(memberBox);
   }
 
@@ -4296,7 +5503,11 @@ function adminActionButton(label, action, variant = '') {
 }
 
 async function updateReportStatus(report, status) {
-  const table = report.kind === 'conversation' ? 'kt_conversation_reports' : report.kind === 'member' ? 'kt_member_reports' : 'kt_reports';
+  const table =
+    report.kind === 'conversation' ? 'kt_conversation_reports'
+    : report.kind === 'group' ? 'kt_group_reports'
+    : report.kind === 'member' ? 'kt_member_reports'
+    : 'kt_reports';
   try {
     const { error } = await supabase.from(table).update({ status }).eq('id', report.id);
     if (error) throw error;

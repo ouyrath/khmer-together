@@ -255,16 +255,19 @@
             <div>
               <span class="mini-badge">PRIVATE CONVERSATIONS</span>
               <h2 id="messagesTitle">Messages</h2>
-              <p id="messagesSummary">Your one-to-one conversations.</p>
+              <p id="messagesSummary">Private conversations and groups.</p>
             </div>
-            <button id="messagesRefreshButton" class="icon-button" type="button" title="Refresh messages" aria-label="Refresh messages">↻</button>
+            <div class="messages-header-actions">
+              <button id="newGroupButton" class="button small primary" type="button">New group</button>
+              <button id="messagesRefreshButton" class="icon-button" type="button" title="Refresh messages" aria-label="Refresh messages">↻</button>
+            </div>
           </div>
 
           <div id="messagesLoading" class="loading-card card hidden">Loading conversations…</div>
           <div id="messagesEmpty" class="empty-card card hidden">
             <div class="empty-icon">✉</div>
             <h3>No conversations yet</h3>
-            <p>Open a member profile and tap Message to start a private conversation.</p>
+            <p>Open a member profile to start a conversation, or create a private group.</p>
             <button id="findMembersForMessages" class="button primary" type="button">Find members</button>
           </div>
           <div id="conversationsList" class="conversations-list"></div>
@@ -273,7 +276,7 @@
         <section id="chatView" class="chat-view hidden" aria-labelledby="chatMemberName">
           <div class="chat-page-header card">
             <button id="chatBackButton" class="chat-back-button" type="button" aria-label="Back to messages">←</button>
-            <button id="chatMemberButton" class="chat-member-button" type="button" aria-label="Open member profile">
+            <button id="chatMemberButton" class="chat-member-button" type="button" aria-label="Open conversation details">
               <span id="chatMemberAvatar" class="avatar chat-member-avatar">KT</span>
               <span>
                 <strong id="chatMemberName">Khmer Together Member</strong>
@@ -675,6 +678,132 @@
 
       <p id="reportMessage" class="form-message" role="status"></p>
       <button id="submitReportButton" class="button primary full" type="submit">Submit report</button>
+    </form>
+  </dialog>
+
+  <dialog id="createGroupDialog" class="modal group-modal">
+    <form id="createGroupForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <span class="mini-badge">PRIVATE GROUP</span>
+          <h2>Create a group</h2>
+          <p>Add up to 24 other members. Including you, a group can have 25 members.</p>
+        </div>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <label>
+        Group name
+        <input id="newGroupName" maxlength="80" required placeholder="Family, friends, business team…">
+      </label>
+
+      <div class="group-photo-editor">
+        <div id="newGroupPhotoPreview" class="group-photo-preview">G</div>
+        <div>
+          <input id="newGroupPhotoInput" class="hidden" type="file" accept="image/jpeg,image/png,image/webp">
+          <button id="chooseNewGroupPhotoButton" class="button small ghost" type="button">Choose group photo</button>
+          <button id="removeNewGroupPhotoButton" class="text-button danger-text hidden" type="button">Remove</button>
+          <small>Optional JPG, PNG, or WebP — maximum 5 MB.</small>
+        </div>
+      </div>
+
+      <label class="group-member-search-box">
+        Find members
+        <input id="newGroupMemberSearch" type="search" maxlength="80" autocomplete="off" placeholder="Search name or @username">
+      </label>
+
+      <div class="group-selection-summary">
+        <strong id="newGroupSelectedCount">0 selected</strong>
+        <span>Maximum 24 invited members</span>
+      </div>
+      <div id="newGroupSelectedMembers" class="group-selected-members"></div>
+      <div id="newGroupMemberResults" class="group-member-results"></div>
+
+      <p id="createGroupMessage" class="form-message" role="status"></p>
+      <button id="createGroupSubmitButton" class="button primary full" type="submit">Create private group</button>
+    </form>
+  </dialog>
+
+  <dialog id="groupDetailsDialog" class="modal group-modal wide-modal">
+    <div class="group-details-shell">
+      <div class="modal-header">
+        <div>
+          <span class="mini-badge">PRIVATE GROUP</span>
+          <h2 id="groupDetailsTitle">Group details</h2>
+          <p id="groupDetailsSummary">Manage members and group settings.</p>
+        </div>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <section id="groupAdminSettings" class="group-admin-settings hidden">
+        <div class="group-settings-photo-row">
+          <div id="groupSettingsPhotoPreview" class="group-photo-preview large">G</div>
+          <div>
+            <input id="groupSettingsPhotoInput" class="hidden" type="file" accept="image/jpeg,image/png,image/webp">
+            <button id="chooseGroupSettingsPhotoButton" class="button small ghost" type="button">Change photo</button>
+            <button id="removeGroupSettingsPhotoButton" class="text-button danger-text" type="button">Remove photo</button>
+          </div>
+        </div>
+
+        <form id="renameGroupForm" class="group-rename-form">
+          <label>
+            Group name
+            <input id="renameGroupInput" maxlength="80" required>
+          </label>
+          <button id="renameGroupButton" class="button small primary" type="submit">Save name</button>
+        </form>
+
+        <div class="group-add-members">
+          <h3>Add members</h3>
+          <input id="groupAddMemberSearch" type="search" maxlength="80" autocomplete="off" placeholder="Search name or @username">
+          <div id="groupAddMemberResults" class="group-member-results compact"></div>
+        </div>
+      </section>
+
+      <div class="group-members-heading">
+        <h3>Members</h3>
+        <span id="groupMemberCount">0 of 25</span>
+      </div>
+      <div id="groupMembersList" class="group-members-list"></div>
+
+      <div class="group-details-actions">
+        <button id="leaveGroupButton" class="button ghost danger-outline" type="button">Leave group</button>
+      </div>
+      <p id="groupDetailsMessage" class="form-message" role="status"></p>
+    </div>
+  </dialog>
+
+  <dialog id="groupReportDialog" class="modal">
+    <form id="groupReportForm" method="dialog">
+      <div class="modal-header">
+        <div>
+          <h2>Report group</h2>
+          <p>Your report is private. Group message contents are not automatically shared.</p>
+        </div>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div id="reportedGroupPreview" class="reported-member-preview"></div>
+
+      <label>
+        Reason
+        <select id="groupReportReason" required>
+          <option value="">Select a reason</option>
+          <option value="spam_scam">Spam or scam activity</option>
+          <option value="harassment">Harassment or bullying</option>
+          <option value="unsafe_group">Threatening or unsafe group</option>
+          <option value="illegal_content">Illegal or exploitative content</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+
+      <label>
+        Details
+        <textarea id="groupReportDetails" maxlength="500" required placeholder="Explain what happened. Do not include private information you do not want reviewed."></textarea>
+      </label>
+
+      <p id="groupReportMessage" class="form-message" role="status"></p>
+      <button id="submitGroupReportButton" class="button primary full" type="submit">Submit group report</button>
     </form>
   </dialog>
 
