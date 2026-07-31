@@ -892,3 +892,70 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
 .nav-notification-badge.hidden{
   display:none !important;
 }
+
+
+/* Shareable direct post links */
+.post-actions{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  position:relative;
+}
+.post-actions .share-button[aria-expanded="true"]{
+  background:var(--soft);
+  color:var(--blue);
+}
+.post-share-menu{
+  position:absolute;
+  right:10px;
+  bottom:50px;
+  z-index:25;
+  display:none;
+  min-width:185px;
+  padding:6px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 15px 38px rgba(23,45,73,.18);
+}
+.post-share-menu.open{display:grid}
+.post-share-menu-item{
+  border:0!important;
+  background:transparent!important;
+  color:var(--ink)!important;
+  border-radius:8px!important;
+  padding:10px 11px!important;
+  text-align:left;
+  font-size:11px;
+  font-weight:800;
+}
+.post-share-menu-item:hover{background:var(--soft)!important}
+.shared-post-back{
+  border:0;
+  background:transparent;
+  color:var(--blue);
+  padding:0;
+  margin:0 0 7px;
+  font-size:11px;
+  font-weight:900;
+}
+.shared-post-unavailable{
+  padding:38px 25px;
+  text-align:center;
+}
+.shared-post-unavailable h3{margin:10px 0 5px}
+.shared-post-unavailable p{
+  color:var(--muted);
+  max-width:470px;
+  margin:0 auto 18px;
+  line-height:1.5;
+}
+@media(max-width:470px){
+  .post-actions button{
+    padding:9px 4px;
+    font-size:11px;
+  }
+  .post-share-menu{
+    left:10px;
+    right:10px;
+    min-width:0;
+  }
+}

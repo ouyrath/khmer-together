@@ -8,6 +8,7 @@ let currentUser = null;
 let currentProfile = null;
 let authMode = 'signin';
 let feedMode = 'all';
+let activeSharedPostId = null;
 let selectedPostImages = [];
 let selectedProfileImage = null;
 let removeProfileImageRequested = false;
@@ -73,6 +74,7 @@ const els = {
   composerAvatar: $('#composerAvatar'), feed: $('#feed'),
   loading: $('#loadingFeed'), empty: $('#emptyFeed'),
   feedTitle: $('#feedTitle'), feedSubtitle: $('#feedSubtitle'),
+  sharedPostBack: $('#sharedPostBackButton'),
   refresh: $('#refreshButton'), postDialog: $('#postDialog'),
   postForm: $('#postForm'), postBody: $('#postBody'),
   postImage: $('#postImage'), postMessage: $('#postMessage'),
@@ -223,16 +225,181 @@ function profilePath(username = '') {
   return `/u/${encodeURIComponent(username)}`;
 }
 
-async function handleLocationRoute() {
-  if (!currentUser) return;
-  const match = location.pathname.match(/^\/u\/([^/]+)\/?$/i);
+function postPath(postId = '') {
+  return `/p/${encodeURIComponent(postId)}`;
+}
 
-  if (!match) {
-    if (feedMode === 'profile') switchView('all', false, false);
+function isDeepLinkPath() {
+  return /^\/(?:u|p)\//i.test(location.pathname);
+}
+
+function sharedPostUrl(postId) {
+  return `${location.origin}${postPath(postId)}`;
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
     return;
   }
 
-  const username = decodeURIComponent(match[1]).toLowerCase();
+  const input = document.createElement('textarea');
+  input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  input.style.pointerEvents = 'none';
+  document.body.appendChild(input);
+  input.select();
+  const copied = document.execCommand('copy');
+  input.remove();
+  if (!copied) throw new Error('Copy was not supported by this browser.');
+}
+
+async function copyPostLink(postId) {
+  try {
+    await copyTextToClipboard(sharedPostUrl(postId));
+    showToast('Post link copied.');
+  } catch (error) {
+    showToast(error.message || 'Unable to copy the post link.');
+  }
+}
+
+async function sharePostThroughApps(post, profile) {
+  const url = sharedPostUrl(post.id);
+  const authorName = profile?.full_name || 'Khmer Together Member';
+  const body = String(post.body || '').trim();
+  const shareData = {
+    title: `${authorName} on Khmer Together`,
+    text: body
+      ? body.slice(0, 180)
+      : `${authorName} shared photos on Khmer Together.`,
+    url
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+    }
+  }
+
+  await copyPostLink(post.id);
+}
+
+async function loadSharedPostData(postId) {
+  let post = feedState.posts.find(item => item.id === postId);
+  if (post) return post;
+
+  const { data: fetchedPost, error: postError } = await supabase
+    .from('kt_posts')
+    .select('*')
+    .eq('id', postId)
+    .maybeSingle();
+
+  if (postError || !fetchedPost) return null;
+
+  const [commentsResult, likesResult, profileResult] = await Promise.all([
+    supabase
+      .from('kt_comments')
+      .select('*')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('kt_likes')
+      .select('*')
+      .eq('post_id', postId),
+    supabase
+      .from('kt_profiles')
+      .select('*')
+      .eq('id', fetchedPost.user_id)
+      .maybeSingle()
+  ]);
+
+  if (commentsResult.error || likesResult.error || profileResult.error) {
+    return null;
+  }
+
+  feedState.posts = [
+    fetchedPost,
+    ...feedState.posts.filter(item => item.id !== fetchedPost.id)
+  ];
+  feedState.comments = [
+    ...feedState.comments.filter(item => item.post_id !== postId),
+    ...(commentsResult.data || [])
+  ];
+  feedState.likes = [
+    ...feedState.likes.filter(item => item.post_id !== postId),
+    ...(likesResult.data || [])
+  ];
+  if (profileResult.data) {
+    feedState.profiles.set(profileResult.data.id, profileResult.data);
+  }
+
+  return fetchedPost;
+}
+
+function showSharedPostUnavailable() {
+  activeSharedPostId = null;
+  switchView('post', false, false);
+  els.empty.classList.add('hidden');
+  els.feed.innerHTML = `
+    <section class="card shared-post-unavailable">
+      <div class="empty-icon">⌁</div>
+      <h3>Post unavailable</h3>
+      <p>The post may have been deleted, or you may not have permission to view it.</p>
+      <button class="button primary" type="button">Return to community feed</button>
+    </section>
+  `;
+  els.feed.querySelector('button')?.addEventListener('click', returnToCommunityFeed);
+}
+
+async function openSharedPost(postId, options = {}) {
+  const { pushHistory = true } = options;
+  if (!postId) return showSharedPostUnavailable();
+
+  const post = await loadSharedPostData(postId);
+  if (!post) {
+    if (pushHistory) history.pushState({}, '', postPath(postId));
+    showSharedPostUnavailable();
+    return;
+  }
+
+  activeSharedPostId = post.id;
+  if (pushHistory) history.pushState({}, '', postPath(post.id));
+  switchView('post', false, false);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function returnToCommunityFeed() {
+  activeSharedPostId = null;
+  history.pushState({}, '', '/');
+  switchView('all', false, false);
+}
+
+async function handleLocationRoute() {
+  if (!currentUser) return;
+
+  const postMatch = location.pathname.match(/^\/p\/([^/]+)\/?$/i);
+  if (postMatch) {
+    await openSharedPost(decodeURIComponent(postMatch[1]), {
+      pushHistory: false
+    });
+    return;
+  }
+
+  const profileMatch = location.pathname.match(/^\/u\/([^/]+)\/?$/i);
+  if (!profileMatch) {
+    if (feedMode === 'profile' || feedMode === 'post') {
+      activeSharedPostId = null;
+      switchView('all', false, false);
+    }
+    return;
+  }
+
+  const username = decodeURIComponent(profileMatch[1]).toLowerCase();
   let profile = [...feedState.profiles.values()]
     .find(item => String(item.username || '').toLowerCase() === username);
 
@@ -245,7 +412,9 @@ async function handleLocationRoute() {
 
     if (error || !data) {
       switchView('profile', false, false);
-      showMemberProfileError('This profile is unavailable or the member has blocked access.');
+      showMemberProfileError(
+        'This profile is unavailable or the member has blocked access.'
+      );
       return;
     }
     profile = data;
@@ -417,6 +586,7 @@ function bindEvents() {
   els.signOut.addEventListener('click', signOutUser);
   els.mobileSignOut.addEventListener('click', signOutUser);
   els.refresh.addEventListener('click', loadFeed);
+  els.sharedPostBack.addEventListener('click', returnToCommunityFeed);
   $('#newPostTop').addEventListener('click', openComposer);
   $('#openComposerButton').addEventListener('click', openComposer);
   $('#emptyCreatePost').addEventListener('click', openComposer);
@@ -451,13 +621,13 @@ function bindEvents() {
   els.memberReportForm.addEventListener('submit', submitMemberReport);
   els.myProfileSummary.addEventListener('click', () => openMemberProfile(currentUser.id));
   els.notificationBell.addEventListener('click', () => {
-    if (location.pathname.startsWith('/u/')) history.pushState({}, '', '/');
+    if (isDeepLinkPath()) history.pushState({}, '', '/');
     switchView('notifications');
   });
   els.notificationsRefreshButton.addEventListener('click', loadNotifications);
   els.markAllNotificationsRead.addEventListener('click', markAllNotificationsAsRead);
   els.messageTopButton.addEventListener('click', () => {
-    if (location.pathname.startsWith('/u/')) history.pushState({}, '', '/');
+    if (isDeepLinkPath()) history.pushState({}, '', '/');
     switchView('messages');
   });
   els.messagesRefreshButton.addEventListener('click', loadConversations);
@@ -510,11 +680,12 @@ function bindEvents() {
   document.addEventListener('click', () => {
     closeCommentMenus();
     closePostMenus();
+    closeShareMenus();
   });
 
   $$('[data-feed]').forEach(button => {
     button.addEventListener('click', () => {
-      if (location.pathname.startsWith('/u/')) history.pushState({}, '', '/');
+      if (isDeepLinkPath()) history.pushState({}, '', '/');
       switchView(button.dataset.feed);
     });
   });
@@ -582,7 +753,11 @@ function switchView(mode, load = true, updateHistory = true) {
 
   feedMode = mode;
   $$('[data-feed]').forEach(item => {
-    const activeMode = mode === 'profile' ? 'members' : mode === 'chat' ? 'messages' : mode;
+    const activeMode =
+      mode === 'profile' ? 'members'
+      : mode === 'chat' ? 'messages'
+      : mode === 'post' ? 'all'
+      : mode;
     item.classList.toggle('active', item.dataset.feed === activeMode);
   });
 
@@ -594,9 +769,10 @@ function switchView(mode, load = true, updateHistory = true) {
   const messagesMode = mode === 'messages';
   const chatMode = mode === 'chat';
   const settingsMode = mode === 'settings';
+  const postMode = mode === 'post';
   const specialMode = adminMode || blockedMode || membersMode || profileMode || notificationsMode || messagesMode || chatMode || settingsMode;
 
-  els.composerCard.classList.toggle('hidden', specialMode);
+  els.composerCard.classList.toggle('hidden', specialMode || postMode);
   els.feedHeading.classList.toggle('hidden', specialMode);
   els.feed.classList.toggle('hidden', specialMode);
   els.adminReportsView.classList.toggle('hidden', !adminMode);
@@ -608,8 +784,9 @@ function switchView(mode, load = true, updateHistory = true) {
   els.chatView.classList.toggle('hidden', !chatMode);
   els.accountSettingsView.classList.toggle('hidden', !settingsMode);
 
-  if (updateHistory && !profileMode && location.pathname.startsWith('/u/')) {
+  if (updateHistory && !profileMode && !postMode && isDeepLinkPath()) {
     history.pushState({}, '', '/');
+    activeSharedPostId = null;
   }
 
   if (adminMode) {
@@ -663,6 +840,16 @@ function switchView(mode, load = true, updateHistory = true) {
     return;
   }
 
+  if (postMode) {
+    els.loading.classList.add('hidden');
+    els.feedTitle.textContent = 'Shared post';
+    els.feedSubtitle.textContent = 'A direct post from the Khmer Together community.';
+    els.sharedPostBack.classList.remove('hidden');
+    renderFeed();
+    return;
+  }
+
+  els.sharedPostBack.classList.add('hidden');
   els.feedTitle.textContent = mode === 'all' ? 'Community feed' : 'Following';
   els.feedSubtitle.textContent = mode === 'all'
     ? 'Latest posts from Khmer Together members.'
@@ -1032,11 +1219,74 @@ function renderFeed() {
   els.feed.innerHTML = '';
   const followingIds = new Set(feedState.follows.filter(f => f.follower_id === currentUser.id).map(f => f.following_id));
   followingIds.add(currentUser.id);
-  const posts = feedMode === 'following'
-    ? feedState.posts.filter(post => followingIds.has(post.user_id))
-    : feedState.posts;
+  const posts =
+    feedMode === 'post'
+      ? feedState.posts.filter(post => post.id === activeSharedPostId)
+      : feedMode === 'following'
+        ? feedState.posts.filter(post => followingIds.has(post.user_id))
+        : feedState.posts;
   els.empty.classList.toggle('hidden', posts.length > 0);
   for (const post of posts) els.feed.appendChild(renderPost(post, followingIds));
+}
+
+function closeShareMenus(exceptMenu = null) {
+  $$('.post-share-menu.open').forEach(menu => {
+    if (menu === exceptMenu) return;
+    menu.classList.remove('open');
+    const trigger = menu.closest('.post-actions')?.querySelector('.share-button');
+    trigger?.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function attachPostShareMenu(node, post, profile) {
+  const trigger = $('.share-button', node);
+  const actions = $('.post-actions', node);
+  if (!trigger || !actions) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'post-share-menu';
+  menu.setAttribute('role', 'menu');
+
+  const addItem = (label, action) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'post-share-menu-item';
+    button.setAttribute('role', 'menuitem');
+    button.textContent = label;
+    button.addEventListener('click', async event => {
+      event.stopPropagation();
+      menu.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      await action();
+    });
+    menu.appendChild(button);
+  };
+
+  addItem('Share through apps', () => sharePostThroughApps(post, profile));
+  addItem('Copy post link', () => copyPostLink(post.id));
+  addItem('Open this post', () => openSharedPost(post.id));
+
+  actions.appendChild(menu);
+
+  trigger.addEventListener('click', event => {
+    event.stopPropagation();
+    const opening = !menu.classList.contains('open');
+    closeShareMenus(menu);
+    closeCommentMenus();
+    closePostMenus();
+    menu.classList.toggle('open', opening);
+    trigger.setAttribute('aria-expanded', String(opening));
+    if (opening) setTimeout(() => menu.querySelector('button')?.focus(), 0);
+  });
+
+  menu.addEventListener('click', event => event.stopPropagation());
+  menu.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      menu.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.focus();
+    }
+  });
 }
 
 function closePostMenus(exceptMenu = null) {
@@ -1084,6 +1334,8 @@ function renderPost(post, followingIds) {
 
   $('.like-count',node).textContent = `${postLikes.length} ${postLikes.length === 1 ? 'like':'likes'}`;
   $('.comment-count',node).textContent = `${postComments.length} ${postComments.length === 1 ? 'comment':'comments'}`;
+
+  attachPostShareMenu(node, post, profile);
 
   const likeButton = $('.like-button',node);
   likeButton.classList.toggle('liked',liked);
@@ -1799,6 +2051,9 @@ async function deletePost(post) {
     }
 
     showToast('Post deleted.');
+    if (activeSharedPostId === post.id) {
+      returnToCommunityFeed();
+    }
     await loadFeed();
   } catch (error) {
     showToast(error.message || 'Unable to delete post.');
