@@ -11,6 +11,10 @@
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="connectionBanner" class="connection-banner hidden" role="status" aria-live="polite">
+    <span aria-hidden="true">●</span>
+    You are offline. Some information may be outdated until your connection returns.
+  </div>
 
   <header class="topbar">
     <a class="brand" href="/" aria-label="Khmer Together home">
@@ -514,6 +518,36 @@
     </section>
   </main>
 
+
+  <nav id="mobileBottomNav" class="mobile-bottom-nav hidden" aria-label="Mobile navigation">
+    <button id="mobileFeedNav" class="mobile-nav-item active" data-feed="all" type="button">
+      <span class="mobile-nav-icon" aria-hidden="true">⌂</span>
+      <small>Feed</small>
+    </button>
+
+    <button id="mobileMessagesNav" class="mobile-nav-item" data-feed="messages" type="button">
+      <span class="mobile-nav-icon" aria-hidden="true">✉</span>
+      <small>Messages</small>
+      <strong id="mobileMessageBadge" class="mobile-nav-badge hidden">0</strong>
+    </button>
+
+    <button id="mobileCreatePostButton" class="mobile-nav-item mobile-create-item" type="button" aria-label="Create post">
+      <span class="mobile-create-icon" aria-hidden="true">＋</span>
+      <small>Create</small>
+    </button>
+
+    <button id="mobileNotificationsNav" class="mobile-nav-item" data-feed="notifications" type="button">
+      <span class="mobile-nav-icon" aria-hidden="true">♢</span>
+      <small>Alerts</small>
+      <strong id="mobileNotificationBadge" class="mobile-nav-badge hidden">0</strong>
+    </button>
+
+    <button id="mobileMoreButton" class="mobile-nav-item" type="button" aria-haspopup="dialog" aria-controls="mobileMoreDialog">
+      <span class="mobile-nav-icon" aria-hidden="true">☰</span>
+      <small>More</small>
+    </button>
+  </nav>
+
   <footer class="site-footer">
     <div class="site-footer-inner">
       <div>
@@ -529,6 +563,56 @@
       <small>© 2026 Khmer Together. Independent community platform.</small>
     </div>
   </footer>
+
+  <dialog id="mobileMoreDialog" class="mobile-more-dialog">
+    <section class="mobile-more-sheet">
+      <div class="mobile-more-handle" aria-hidden="true"></div>
+
+      <div class="mobile-more-header">
+        <button id="mobileMoreProfileButton" class="mobile-more-profile" type="button">
+          <span id="mobileMoreAvatar" class="avatar">KT</span>
+          <span>
+            <strong id="mobileMoreName">Khmer Together Member</strong>
+            <small id="mobileMoreUsername">@member</small>
+          </span>
+        </button>
+        <button type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <nav class="mobile-more-menu" aria-label="More navigation">
+        <button class="mobile-more-item" data-feed="following" type="button">
+          <span aria-hidden="true">♡</span>
+          <strong>Following</strong>
+        </button>
+        <button class="mobile-more-item" data-feed="members" type="button">
+          <span aria-hidden="true">⌕</span>
+          <strong>Find members</strong>
+        </button>
+        <button class="mobile-more-item" data-feed="blocked" type="button">
+          <span aria-hidden="true">⊘</span>
+          <strong>Blocked users</strong>
+        </button>
+        <button class="mobile-more-item" data-feed="settings" type="button">
+          <span aria-hidden="true">⚙</span>
+          <strong>Account settings</strong>
+        </button>
+        <button id="mobileMoreAdminButton" class="mobile-more-item hidden" data-feed="admin" type="button">
+          <span aria-hidden="true">⚑</span>
+          <strong>Admin reports</strong>
+        </button>
+        <button id="mobileMoreSignOutButton" class="mobile-more-item danger" type="button">
+          <span aria-hidden="true">↪</span>
+          <strong>Sign out</strong>
+        </button>
+      </nav>
+
+      <div class="mobile-more-legal">
+        <a href="/terms.html">Terms</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/guidelines.html">Guidelines</a>
+      </div>
+    </section>
+  </dialog>
 
   <dialog id="deleteAccountDialog" class="modal danger-modal">
     <form id="deleteAccountForm" method="dialog">

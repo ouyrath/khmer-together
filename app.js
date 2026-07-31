@@ -64,7 +64,8 @@ const recentCommentSubmissions = new Map();
 let feedState = { profiles: new Map(), posts: [], comments: [], likes: [], follows: [], blocks: [] };
 
 const els = {
-  toast: $('#toast'), authView: $('#authView'), appView: $('#appView'),
+  toast: $('#toast'), connectionBanner: $('#connectionBanner'),
+  authView: $('#authView'), appView: $('#appView'),
   topActions: $('#topActions'), authForm: $('#authForm'),
   email: $('#emailInput'), password: $('#passwordInput'),
   authButton: $('#emailAuthButton'), toggleMode: $('#toggleAuthMode'),
@@ -185,8 +186,59 @@ const els = {
   confirmDeleteAccount: $('#confirmDeleteAccountButton'),
   photoViewerDialog: $('#photoViewerDialog'), photoViewerImage: $('#photoViewerImage'),
   photoViewerCaption: $('#photoViewerCaption'), closePhotoViewer: $('#closePhotoViewerButton'),
-  previousPhoto: $('#previousPhotoButton'), nextPhoto: $('#nextPhotoButton')
+  previousPhoto: $('#previousPhotoButton'), nextPhoto: $('#nextPhotoButton'),
+  mobileBottomNav: $('#mobileBottomNav'), mobileFeedNav: $('#mobileFeedNav'),
+  mobileMessagesNav: $('#mobileMessagesNav'), mobileMessageBadge: $('#mobileMessageBadge'),
+  mobileCreatePost: $('#mobileCreatePostButton'),
+  mobileNotificationsNav: $('#mobileNotificationsNav'),
+  mobileNotificationBadge: $('#mobileNotificationBadge'),
+  mobileMoreButton: $('#mobileMoreButton'), mobileMoreDialog: $('#mobileMoreDialog'),
+  mobileMoreProfile: $('#mobileMoreProfileButton'), mobileMoreAvatar: $('#mobileMoreAvatar'),
+  mobileMoreName: $('#mobileMoreName'), mobileMoreUsername: $('#mobileMoreUsername'),
+  mobileMoreAdmin: $('#mobileMoreAdminButton'), mobileMoreSignOut: $('#mobileMoreSignOutButton')
 };
+
+function updateConnectionStatus(announce = false) {
+  const offline = !navigator.onLine;
+  els.connectionBanner.classList.toggle('hidden', !offline);
+
+  if (announce && !offline) {
+    showToast('Back online. Refreshing Khmer Together…');
+    if (currentUser) {
+      Promise.allSettled([
+        loadFeed(),
+        loadNotificationCount(),
+        loadUnreadMessageCount()
+      ]);
+    }
+  }
+}
+
+function closeMobileMoreMenu() {
+  if (els.mobileMoreDialog.open) els.mobileMoreDialog.close();
+}
+
+function openMobileMoreMenu() {
+  updateMyProfileUI();
+  if (!els.mobileMoreDialog.open) els.mobileMoreDialog.showModal();
+}
+
+function syncMobileNavigation(mode) {
+  const moreModes = new Set([
+    'following', 'members', 'blocked', 'settings', 'admin', 'profile'
+  ]);
+  els.mobileMoreButton.classList.toggle('active', moreModes.has(mode));
+  els.mobileBottomNav.dataset.activeMode = mode;
+}
+
+function refreshCurrentView() {
+  if (!currentUser) return;
+  if (feedMode === 'messages') return loadConversations();
+  if (feedMode === 'notifications') return loadNotifications();
+  if (feedMode === 'blocked') return loadBlockedUsers();
+  if (feedMode === 'admin' && isAdmin) return loadAdminReports();
+  return loadFeed();
+}
 
 function initials(name = 'KT') {
   return name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'KT';
@@ -585,9 +637,16 @@ function bindEvents() {
   const signOutUser = () => supabase.auth.signOut({ scope: 'local' });
   els.signOut.addEventListener('click', signOutUser);
   els.mobileSignOut.addEventListener('click', signOutUser);
-  els.refresh.addEventListener('click', loadFeed);
+  els.mobileMoreSignOut.addEventListener('click', signOutUser);
+  els.refresh.addEventListener('click', refreshCurrentView);
   els.sharedPostBack.addEventListener('click', returnToCommunityFeed);
   $('#newPostTop').addEventListener('click', openComposer);
+  els.mobileCreatePost.addEventListener('click', openComposer);
+  els.mobileMoreButton.addEventListener('click', openMobileMoreMenu);
+  els.mobileMoreProfile.addEventListener('click', () => {
+    closeMobileMoreMenu();
+    openMemberProfile(currentUser.id, { returnMode: 'all' });
+  });
   $('#openComposerButton').addEventListener('click', openComposer);
   $('#emptyCreatePost').addEventListener('click', openComposer);
   $('#editProfileButton').addEventListener('click', openProfile);
@@ -673,6 +732,12 @@ function bindEvents() {
     });
   });
   window.addEventListener('popstate', handleLocationRoute);
+  window.addEventListener('offline', () => updateConnectionStatus());
+  window.addEventListener('online', () => updateConnectionStatus(true));
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 600) closeMobileMoreMenu();
+  });
+  updateConnectionStatus();
   $$('.close-button').forEach(button => {
     button.addEventListener('click', () => button.closest('dialog')?.close());
   });
@@ -685,8 +750,13 @@ function bindEvents() {
 
   $$('[data-feed]').forEach(button => {
     button.addEventListener('click', () => {
+      closeMobileMoreMenu();
       if (isDeepLinkPath()) history.pushState({}, '', '/');
       switchView(button.dataset.feed);
+
+      if (button.closest('.mobile-bottom-nav')) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     });
   });
 }
@@ -716,15 +786,19 @@ async function handleSession(session) {
     updateNotificationBadges();
     updateMessageBadges();
     els.adminReportsNav.classList.add('hidden');
+    els.mobileMoreAdmin.classList.add('hidden');
     els.authView.classList.remove('hidden');
     els.appView.classList.add('hidden');
     els.topActions.classList.add('hidden');
+    els.mobileBottomNav.classList.add('hidden');
+    closeMobileMoreMenu();
     return;
   }
 
   els.authView.classList.add('hidden');
   els.appView.classList.remove('hidden');
   els.topActions.classList.remove('hidden');
+  els.mobileBottomNav.classList.remove('hidden');
 
   await ensureProfile();
   await checkAdminAccess();
@@ -746,6 +820,7 @@ async function checkAdminAccess() {
   if (error) throw error;
   isAdmin = Boolean(data);
   els.adminReportsNav.classList.toggle('hidden', !isAdmin);
+  els.mobileMoreAdmin.classList.toggle('hidden', !isAdmin);
 }
 
 function switchView(mode, load = true, updateHistory = true) {
@@ -760,6 +835,7 @@ function switchView(mode, load = true, updateHistory = true) {
       : mode;
     item.classList.toggle('active', item.dataset.feed === activeMode);
   });
+  syncMobileNavigation(mode);
 
   const adminMode = mode === 'admin';
   const blockedMode = mode === 'blocked';
@@ -880,6 +956,9 @@ function updateMyProfileUI() {
   els.myUsername.textContent = `@${username}`;
   setAvatar(els.myAvatar, currentProfile || { full_name: name });
   setAvatar(els.composerAvatar, currentProfile || { full_name: name });
+  setAvatar(els.mobileMoreAvatar, currentProfile || { full_name: name });
+  els.mobileMoreName.textContent = name;
+  els.mobileMoreUsername.textContent = `@${username}`;
   els.profileName.value = name;
   els.profileUsername.value = username;
   els.profileBio.value = currentProfile?.bio || '';
@@ -927,7 +1006,12 @@ async function signInWithGoogle() {
   if (error) setMessage(els.authMessage, error.message);
 }
 
-function openComposer() { setMessage(els.postMessage); els.postDialog.showModal(); setTimeout(() => els.postBody.focus(), 50); }
+function openComposer() {
+  closeMobileMoreMenu();
+  setMessage(els.postMessage);
+  els.postDialog.showModal();
+  setTimeout(() => els.postBody.focus(), 50);
+}
 function openProfile() { updateMyProfileUI(); setMessage(els.profileMessage); els.profileDialog.showModal(); }
 
 function previewProfilePhoto() {
@@ -2498,7 +2582,11 @@ function updateMessageBadges() {
   const count = Math.max(0, Number(unreadMessageCount) || 0);
   const label = count > 99 ? '99+' : String(count);
 
-  for (const badge of [els.messageTopBadge, els.messageNavBadge]) {
+  for (const badge of [
+    els.messageTopBadge,
+    els.messageNavBadge,
+    els.mobileMessageBadge
+  ]) {
     badge.textContent = label;
     badge.classList.toggle('hidden', count === 0);
   }
@@ -3093,7 +3181,11 @@ function updateNotificationBadges() {
   const count = Math.max(0, Number(unreadNotificationCount) || 0);
   const label = count > 99 ? '99+' : String(count);
 
-  for (const badge of [els.notificationBellBadge, els.notificationNavBadge]) {
+  for (const badge of [
+    els.notificationBellBadge,
+    els.notificationNavBadge,
+    els.mobileNotificationBadge
+  ]) {
     badge.textContent = label;
     badge.classList.toggle('hidden', count === 0);
   }
