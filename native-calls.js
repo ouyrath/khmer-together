@@ -3,6 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const DIRECT_ONLY_ICE_CONFIG = { iceServers: [] };
 const RING_SECONDS = 90;
 const CONNECT_WARNING_SECONDS = 15;
+const INCOMING_POLL_MS = 3000;
+const ACTIVE_CALL_POLL_MS = 2000;
 
 let supabase = null;
 let currentUser = null;
@@ -15,6 +17,8 @@ let signalChannel = null;
 let callChannel = null;
 let ringTimer = null;
 let connectWarningTimer = null;
+let incomingPollTimer = null;
+let activeCallPollTimer = null;
 let processedSignalIds = new Set();
 let queuedIceCandidates = [];
 let endingCall = false;
@@ -26,7 +30,8 @@ function installStyles() {
   const style = document.createElement('style');
   style.id = 'ktNativeCallStyles';
   style.textContent = `
-    .kt-native-call-overlay[hidden]{display:none!important}
+    .kt-native-call-overlay[hidden],
+    .kt-native-call-actions[hidden]{display:none!important}
     .kt-native-call-overlay{
       position:fixed;inset:0;z-index:100000;
       display:grid;place-items:center;padding:20px;
@@ -391,6 +396,41 @@ function subscribeToSignals() {
     .subscribe();
 }
 
+function stopActiveCallPolling() {
+  clearInterval(activeCallPollTimer);
+  activeCallPollTimer = null;
+}
+
+function startActiveCallPolling() {
+  stopActiveCallPolling();
+  activeCallPollTimer = setInterval(async () => {
+    if (!activeCall || !supabase || !currentUser) return;
+
+    const { data } = await supabase
+      .from('kt_calls')
+      .select('*')
+      .eq('id', activeCall.id)
+      .maybeSingle();
+
+    if (!data) return;
+    activeCall = data;
+
+    if (data.status === 'accepted') {
+      clearTimeout(ringTimer);
+      if (!peerConnection?.remoteDescription) {
+        fetchExistingSignals().catch(console.error);
+      }
+    } else if (['declined', 'missed', 'ended', 'failed'].includes(data.status)) {
+      setStatus(
+        data.status === 'declined' ? 'Call declined'
+          : data.status === 'missed' ? 'No answer'
+          : 'Call ended'
+      );
+      setTimeout(cleanupCall, 800);
+    }
+  }, ACTIVE_CALL_POLL_MS);
+}
+
 async function startVoiceCall() {
   if (activeCall) {
     setStatus('A call is already active.');
@@ -418,7 +458,7 @@ async function startVoiceCall() {
       .single();
 
     if (error) {
-      if (String(error.message || '').includes('duplicate')) {
+      if (String(error.message || '').toLowerCase().includes('duplicate')) {
         throw new Error('A call is already active in this conversation.');
       }
       throw error;
@@ -428,6 +468,7 @@ async function startVoiceCall() {
     processedSignalIds = new Set();
     queuedIceCandidates = [];
     subscribeToSignals();
+    startActiveCallPolling();
 
     const pc = await createPeerConnection();
     const offer = await pc.createOffer({ offerToReceiveAudio: true });
@@ -477,6 +518,7 @@ async function acceptIncomingCall() {
 
     activeCall.status = 'accepted';
     subscribeToSignals();
+    startActiveCallPolling();
     await createPeerConnection();
     await fetchExistingSignals();
     setStatus('Connecting…');
@@ -546,6 +588,7 @@ function cleanupCall() {
   clearTimeout(connectWarningTimer);
   ringTimer = null;
   connectWarningTimer = null;
+  stopActiveCallPolling();
 
   if (signalChannel && supabase) {
     supabase.removeChannel(signalChannel);
@@ -586,6 +629,8 @@ async function handleIncomingCall(call) {
   if (!call || call.status !== 'ringing') return;
   if (new Date(call.expires_at).getTime() <= Date.now()) return;
 
+  if (activeCall?.id === call.id) return;
+
   if (activeCall && activeCall.id !== call.id) {
     await supabase
       .from('kt_calls')
@@ -601,6 +646,9 @@ async function handleIncomingCall(call) {
   queuedIceCandidates = [];
   showIncomingUi(activePeerProfile);
   subscribeToSignals();
+  startActiveCallPolling();
+
+  if (navigator.vibrate) navigator.vibrate([250, 150, 250]);
 
   ringTimer = setTimeout(async () => {
     if (!activeCall || activeCall.id !== call.id) return;
@@ -614,7 +662,9 @@ async function handleIncomingCall(call) {
 }
 
 async function checkExistingIncomingCall() {
-  const { data } = await supabase
+  if (!supabase || !currentUser || activeCall) return;
+
+  const { data, error } = await supabase
     .from('kt_calls')
     .select('*')
     .eq('callee_id', currentUser.id)
@@ -624,7 +674,24 @@ async function checkExistingIncomingCall() {
     .limit(1)
     .maybeSingle();
 
+  if (error) {
+    console.warn('Incoming-call check failed:', error.message);
+    return;
+  }
+
   if (data) await handleIncomingCall(data);
+}
+
+function stopIncomingPolling() {
+  clearInterval(incomingPollTimer);
+  incomingPollTimer = null;
+}
+
+function startIncomingPolling() {
+  stopIncomingPolling();
+  incomingPollTimer = setInterval(() => {
+    checkExistingIncomingCall().catch(console.error);
+  }, INCOMING_POLL_MS);
 }
 
 function subscribeToCalls() {
@@ -656,6 +723,7 @@ function subscribeToCalls() {
         if (payload.new.status === 'accepted') {
           clearTimeout(ringTimer);
           setStatus('Connecting…');
+          fetchExistingSignals().catch(console.error);
         } else if (['declined', 'missed', 'ended', 'failed'].includes(payload.new.status)) {
           setStatus(
             payload.new.status === 'declined' ? 'Call declined'
@@ -667,6 +735,8 @@ function subscribeToCalls() {
       }
     )
     .subscribe();
+
+  startIncomingPolling();
 }
 
 function configureButtons() {
@@ -678,7 +748,8 @@ function configureButtons() {
     voiceButton.style.display = '';
     voiceButton.removeAttribute('aria-hidden');
     voiceButton.tabIndex = 0;
-    voiceButton.querySelector('strong').textContent = 'Voice';
+    const label = voiceButton.querySelector('strong');
+    if (label) label.textContent = 'Voice';
     voiceButton.title = 'Start private voice call';
     voiceButton.setAttribute('aria-label', 'Start private voice call');
   }
@@ -728,8 +799,8 @@ async function initialize() {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
 
-    const { data } = await supabase.auth.getUser();
-    currentUser = data.user || null;
+    const { data } = await supabase.auth.getSession();
+    currentUser = data.session?.user || null;
 
     supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user || null;
@@ -738,6 +809,7 @@ async function initialize() {
 
       if (!currentUser) {
         cleanupCall();
+        stopIncomingPolling();
         if (callChannel) supabase.removeChannel(callChannel);
         callChannel = null;
         return;
@@ -757,6 +829,13 @@ async function initialize() {
     console.error('Native voice call setup failed:', error);
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentUser) {
+    checkExistingIncomingCall().catch(console.error);
+    if (activeCall) fetchExistingSignals().catch(console.error);
+  }
+});
 
 window.addEventListener('beforeunload', () => {
   localStream?.getTracks().forEach(track => track.stop());
