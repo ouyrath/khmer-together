@@ -119,3 +119,25 @@ document.addEventListener('click', async event => {
     button.textContent = originalLabel;
   }
 }, true);
+
+function hideChatCallButtons() {
+  ['chatVoiceCallButton', 'chatVideoCallButton'].forEach(id => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    button.hidden = true;
+    button.style.display = 'none';
+    button.setAttribute('aria-hidden', 'true');
+    button.tabIndex = -1;
+  });
+
+  const privacyNote = document.getElementById('chatPrivacyNote');
+  if (privacyNote) {
+    privacyNote.textContent = 'Only you and this member can read these messages.';
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', hideChatCallButtons, { once: true });
+} else {
+  hideChatCallButtons();
+}
