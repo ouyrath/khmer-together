@@ -4,7 +4,7 @@
 .topbar{position:sticky;top:0;z-index:30;height:72px;background:rgba(255,255,255,.95);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100vw - 1180px)/2))}
 .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink)}.brand-mark{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,var(--blue),#1770b8);color:#fff;font-weight:900;box-shadow:0 10px 25px rgba(15,76,129,.25)}.brand strong{display:block;font-size:18px}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:1px}.top-actions{display:flex;gap:9px}
 .button{border:1px solid transparent;border-radius:12px;padding:12px 17px;font-weight:800;transition:.18s}.button:hover{transform:translateY(-1px)}.button.primary{background:var(--blue);color:#fff;box-shadow:0 9px 22px rgba(15,76,129,.2)}.button.primary:hover{background:var(--blue-2)}.button.ghost{background:#fff;border-color:var(--line);color:var(--ink)}.button.google{width:100%;background:#fff;border-color:var(--line);display:flex;justify-content:center;align-items:center;gap:10px}.button.small{padding:9px 13px;font-size:13px}.button.full{width:100%}.google-icon{font-weight:900;color:#4285f4}
-.auth-shell{max-width:1120px;margin:0 auto;min-height:calc(100vh - 72px);padding:56px 20px;display:grid;grid-template-columns:1.12fr .88fr;gap:58px;align-items:center}.hero{padding:20px 0}.eyebrow{font-weight:900;color:var(--blue);font-size:13px;letter-spacing:.07em}.hero h1{font-size:clamp(45px,6vw,70px);line-height:1.02;letter-spacing:-.05em;margin:16px 0 20px}.hero>p{font-size:18px;color:var(--muted);line-height:1.7;max-width:660px}
+.auth-shell{max-width:1120px;margin:0 auto;min-height:calc(100vh - 72px);padding:56px 20px;display:grid;grid-template-columns:1.12fr .88fr;gap:58px;align-items:center}.hero{padding:20px 0}.eyebrow{font-weight:900;color:var(--blue);font-size:13px;letter-spacing:.07em}.hero h1{font-size:clamp(45px,6vw,70px);line-height:1.02;letter-spacing:-.05em;margin:16px 0 20px}.hero>p{font-size:18px;color:#526174;line-height:1.7;max-width:660px}
 .hero-points{display:grid;gap:16px;margin-top:30px}.hero-points>div{display:flex;gap:12px;align-items:flex-start}.hero-points span{flex:0 0 27px;width:27px;height:27px;border-radius:50%;background:#e4f4ff;color:var(--blue);font-weight:900;display:grid;place-items:center}.hero-points p{margin:0;color:var(--muted);line-height:1.45}.hero-points strong{color:var(--ink)}.khmer-tagline{font-size:24px!important;color:var(--blue)!important;font-weight:800;margin-top:32px!important}
 .auth-card,.card{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:20px}.auth-card{padding:30px}.auth-card h2{font-size:29px;margin:0 0 7px}.muted{color:var(--muted);margin:0 0 23px}.divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:20px 0}.divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}
 label{display:block;font-size:13px;font-weight:800;margin-bottom:16px}input,textarea{width:100%;border:1px solid #cdd7e4;border-radius:11px;padding:12px 13px;margin-top:7px;color:var(--ink);background:#fff;outline:none}input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}textarea{resize:vertical;min-height:110px}.text-button{display:block;margin:17px auto 0;border:0;background:transparent;color:var(--blue);font-weight:800}.form-message{font-size:13px;line-height:1.45;min-height:1em;margin:10px 0;color:var(--bad)}.form-message.good{color:var(--good)}
@@ -1504,13 +1504,13 @@ select:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(15,76,129,.1)}
   align-items:center;
   justify-content:center;
   gap:10px;
-  border-color:#229ed9;
-  background:#229ed9;
+  border-color:#0878a8;
+  background:#0878a8;
   color:#fff;
-  box-shadow:0 9px 22px rgba(34,158,217,.18);
+  box-shadow:0 9px 22px rgba(8,120,168,.20);
 }
 .button.telegram:hover{
-  background:#168ac2;
+  background:#06658f;
 }
 .telegram-icon{
   width:22px;
