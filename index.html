@@ -1,905 +1,148 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Khmer Together — a welcoming social community connecting Khmer people everywhere.">
-  <meta name="theme-color" content="#0f4c81">
-  <title>Khmer Together</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#142847" />
+  <meta name="description" content="CircleUp — a simple community app to share, connect, and stay in touch." />
+  <title>CircleUp</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <div id="connectionBanner" class="connection-banner hidden" role="status" aria-live="polite">
-    <span aria-hidden="true">●</span>
-    You are offline. Some information may be outdated until your connection returns.
-  </div>
 
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Khmer Together home">
-      <span class="brand-mark">KT</span>
-      <span>
-        <strong>Khmer Together</strong>
-        <small>Connecting Khmer everywhere</small>
-      </span>
-    </a>
+  <section id="authView" class="auth-screen">
+    <div class="auth-brand">
+      <div class="brand-mark">✦</div>
+      <h1>CircleUp</h1>
+      <p>Share with your community. Follow people you care about. Keep everything simple.</p>
+    </div>
+    <form id="authForm" class="auth-card">
+      <h2 id="authTitle">Welcome back</h2>
+      <p id="authSubtitle">Sign in to continue to CircleUp.</p>
+      <label>Email<input id="emailInput" type="email" autocomplete="email" required /></label>
+      <label>Password<input id="passwordInput" type="password" autocomplete="current-password" minlength="6" required /></label>
+      <button id="authSubmit" class="button primary full" type="submit">Sign in</button>
+      <button id="toggleAuthMode" class="text-button" type="button">Create a new account</button>
+      <p id="authMessage" class="form-message"></p>
+    </form>
+  </section>
 
-    <nav id="topActions" class="top-actions hidden">
-      <button id="messageTopButton" class="message-top-button" type="button" aria-label="Open messages" title="Messages">
-        <span aria-hidden="true">✉</span>
-        <strong id="messageTopBadge" class="message-badge hidden">0</strong>
+  <div id="appView" class="app hidden">
+    <header class="topbar">
+      <button class="brand" id="brandHome" type="button" aria-label="CircleUp home">
+        <span class="brand-mark small">✦</span><strong>CircleUp</strong>
       </button>
-      <button id="notificationBell" class="notification-bell" type="button" aria-label="Open notifications" title="Notifications">
-        <span aria-hidden="true">🔔</span>
-        <strong id="notificationBellBadge" class="notification-badge hidden">0</strong>
-      </button>
-      <button id="newPostTop" class="button small primary" type="button">Create post</button>
-      <button id="signOutButton" class="button small ghost" type="button">Sign out</button>
-    </nav>
-  </header>
-
-  <main>
-    <section id="authView" class="auth-shell">
-      <div class="hero">
-        <span class="eyebrow">KHMER COMMUNITY · SOCIAL · SUPPORT</span>
-        <h1>Share, connect, and grow together.</h1>
-        <p>
-          Khmer Together is a welcoming place for Khmer people to share stories,
-          celebrate culture, support businesses, find opportunities, and stay connected.
-        </p>
-        <div class="hero-points">
-          <div><span>✓</span><p><strong>Share your life</strong><br>Post updates, photos, achievements, and community news.</p></div>
-          <div><span>✓</span><p><strong>Support one another</strong><br>Follow Khmer creators, businesses, families, and friends.</p></div>
-          <div><span>✓</span><p><strong>Built for community</strong><br>Simple, friendly, and designed to grow step by step.</p></div>
-        </div>
-        <p class="khmer-tagline" lang="km">ភ្ជាប់ខ្មែរគ្រប់ទីកន្លែង</p>
+      <div class="search-wrap">
+        <span>⌕</span>
+        <input id="searchInput" type="search" placeholder="Search people, posts, communities" aria-label="Search CircleUp" />
       </div>
+      <div class="top-actions">
+        <button id="shareAppButton" class="icon-button" type="button" aria-label="Share CircleUp">↗</button>
+        <button id="topProfileButton" class="avatar-button" type="button" aria-label="Open profile"><span id="topAvatar" class="avatar">CU</span></button>
+      </div>
+    </header>
 
-      <section class="auth-card" aria-labelledby="authTitle">
-        <h2 id="authTitle">Welcome</h2>
-        <p class="muted">Sign in or create your free account.</p>
+    <main class="shell">
+      <section id="homeView" class="view">
+        <section class="composer card navy-card">
+          <div class="composer-head">
+            <span id="composerAvatar" class="avatar large">CU</span>
+            <div><h2>Share with your community</h2><p>Ask, celebrate, recommend, or say hello.</p></div>
+          </div>
+          <textarea id="postBody" maxlength="2000" placeholder="What’s happening?"></textarea>
+          <div id="postImagePreview" class="post-image-preview hidden"></div>
+          <div class="composer-actions">
+            <div class="composer-left">
+              <select id="postCategory" aria-label="Post category">
+                <option>General</option><option>Question</option><option>Recommendation</option><option>Celebration</option><option>Local</option>
+              </select>
+              <label class="photo-pill" for="postImageInput">▧ Photo</label>
+              <input id="postImageInput" class="sr-only" type="file" accept="image/*" />
+            </div>
+            <button id="publishButton" class="button coral" type="button">Post</button>
+          </div>
+          <p id="postMessage" class="form-message light"></p>
+        </section>
 
-        <div class="auth-social-buttons" aria-label="Social sign in">
-          <button id="googleButton" class="button google" type="button">
-            <span class="google-icon" aria-hidden="true">G</span>
-            Continue with Google
-          </button>
+        <div id="searchSummary" class="search-summary hidden"></div>
+        <div id="feedLoading" class="card status-card">Loading community posts…</div>
+        <div id="feedEmpty" class="card status-card hidden">No posts yet. Be the first person to post.</div>
+        <div id="feed" class="feed"></div>
+      </section>
 
-          <button id="telegramButton" class="button telegram" type="button">
-            <span class="telegram-icon" aria-hidden="true">➤</span>
-            Continue with Telegram
-          </button>
+      <section id="groupsView" class="view hidden">
+        <div class="page-heading"><div><span class="eyebrow">COMMUNITIES</span><h1>Groups</h1><p>Your CircleUp communities.</p></div></div>
+        <div id="groupsLoading" class="card status-card">Loading groups…</div>
+        <div id="groupsEmpty" class="card status-card hidden"><strong>No groups yet</strong><br />Groups you join will show here.</div>
+        <div id="groupsList" class="group-grid"></div>
+      </section>
+
+      <section id="activityView" class="view hidden">
+        <div class="page-heading"><div><span class="eyebrow">UPDATES</span><h1>Activity</h1><p>Likes, comments, follows, and other activity.</p></div><button id="refreshActivity" class="button ghost small" type="button">Refresh</button></div>
+        <div id="activityLoading" class="card status-card">Loading activity…</div>
+        <div id="activityEmpty" class="card status-card hidden">No activity yet.</div>
+        <div id="activityList" class="activity-list"></div>
+      </section>
+
+      <section id="profileView" class="view hidden">
+        <div class="profile-hero card">
+          <div class="profile-main">
+            <span id="profileAvatar" class="avatar profile-avatar">CU</span>
+            <div class="profile-copy">
+              <div class="profile-title-row"><div><h1 id="profileDisplayName">CircleUp Member</h1><p id="profileHandle">@member</p></div><button id="editProfileButton" class="button ghost small" type="button">Edit Profile</button></div>
+              <p id="profileLocation" class="location-text hidden"></p>
+              <p id="profileBioText" class="profile-bio">Add a short bio so people know a little about you.</p>
+              <div class="stats"><button type="button"><strong id="profilePostCount">0</strong><span>Posts</span></button><button type="button"><strong id="profileFollowerCount">0</strong><span>Followers</span></button><button type="button"><strong id="profileFollowingCount">0</strong><span>Following</span></button></div>
+            </div>
+          </div>
         </div>
 
-        <div class="divider"><span>or use email</span></div>
-
-        <form id="authForm">
-          <label>
-            Email address
-            <input id="emailInput" type="email" autocomplete="email" required placeholder="you@example.com">
-          </label>
-          <label>
-            Password
-            <input id="passwordInput" type="password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters">
-          </label>
-          <button id="emailAuthButton" class="button primary full" type="submit">Sign in</button>
+        <form id="profileForm" class="card profile-form hidden">
+          <div class="form-heading"><div><h2>Edit profile</h2><p>Update what other CircleUp members can see.</p></div><button id="cancelEditProfile" class="icon-button" type="button" aria-label="Close">×</button></div>
+          <div class="profile-photo-editor">
+            <span id="profilePhotoPreview" class="avatar profile-avatar">CU</span>
+            <div><label class="button ghost small file-button">Choose photo<input id="profilePhotoInput" type="file" accept="image/*" /></label><p>JPG, PNG, or WebP. Up to 5 MB.</p></div>
+          </div>
+          <div class="form-grid">
+            <label>Name<input id="profileNameInput" maxlength="80" required /></label>
+            <label>Username<div class="input-prefix"><span>@</span><input id="profileUsernameInput" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" required /></div></label>
+            <label class="full-span">Location<input id="profileLocationInput" maxlength="100" placeholder="Houston, TX" /></label>
+            <label class="full-span">Bio<textarea id="profileBioInput" maxlength="240" placeholder="Tell the community a little about you."></textarea></label>
+          </div>
+          <div class="form-actions"><button id="signOutButton" class="button ghost" type="button">Sign out</button><button id="saveProfileButton" class="button primary" type="submit">Save Profile</button></div>
+          <p id="profileMessage" class="form-message"></p>
         </form>
 
-        <button id="toggleAuthMode" class="text-button" type="button">
-          New here? Create an account
-        </button>
-
-        <p class="auth-legal-note">
-          By continuing, you confirm that you are at least 13 years old and agree to our
-          <a href="/terms.html">Terms</a> and
-          <a href="/privacy.html">Privacy Policy</a>.
-        </p>
-
-        <p id="authMessage" class="form-message" role="status"></p>
+        <div class="section-title"><h2>Your posts</h2></div>
+        <div id="profilePostsEmpty" class="card status-card hidden">You haven’t posted yet.</div>
+        <div id="profilePosts" class="feed"></div>
       </section>
-    </section>
+    </main>
 
-    <section id="appView" class="app-shell hidden">
-      <aside class="sidebar card">
-        <button id="myProfileSummary" class="profile-summary profile-summary-button" type="button" aria-label="Open your public profile">
-          <div id="myAvatar" class="avatar large">KT</div>
-          <div>
-            <strong id="myName">Khmer Together Member</strong>
-            <span id="myUsername">@member</span>
-          </div>
-        </button>
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button class="nav-item active" data-view="home" type="button"><span>⌂</span><strong>Home</strong></button>
+      <button class="nav-item" data-view="groups" type="button"><span>♙</span><strong>Groups</strong></button>
+      <button class="nav-item" data-view="activity" type="button"><span class="badge-wrap">♧<em id="activityBadge" class="nav-badge hidden">0</em></span><strong>Activity</strong></button>
+      <button class="nav-item" data-view="profile" type="button"><span>◎</span><strong>Profile</strong></button>
+    </nav>
+  </div>
 
-        <button id="editProfileButton" class="button ghost full" type="button">Edit profile</button>
-        <button id="mobileSignOutButton" class="button ghost full mobile-sign-out-button" type="button">Sign out</button>
-
-        <nav class="side-nav" aria-label="Main navigation">
-          <button class="nav-item active" data-feed="all" type="button"><span>⌂</span> Community feed</button>
-          <button class="nav-item" data-feed="following" type="button"><span>♡</span> Following</button>
-          <button id="messagesNav" class="nav-item message-nav-item" data-feed="messages" type="button">
-            <span>✉</span> Messages
-            <strong id="messageNavBadge" class="nav-message-badge hidden">0</strong>
-          </button>
-          <button id="notificationsNav" class="nav-item notification-nav-item" data-feed="notifications" type="button">
-            <span>♢</span> Notifications
-            <strong id="notificationNavBadge" class="nav-notification-badge hidden">0</strong>
-          </button>
-          <button id="membersNav" class="nav-item" data-feed="members" type="button"><span>⌕</span> Find members</button>
-          <button id="blockedUsersNav" class="nav-item" data-feed="blocked" type="button"><span>⊘</span> Blocked users</button>
-          <button id="accountSettingsNav" class="nav-item" data-feed="settings" type="button"><span>⚙</span> Account settings</button>
-          <button id="adminReportsNav" class="nav-item admin-nav hidden" data-feed="admin" type="button"><span>⚑</span> Admin reports</button>
-        </nav>
-
-        <div class="community-note">
-          <strong>Khmer Together</strong>
-          <p>Be kind, respectful, helpful, and proud of our community.</p>
-        </div>
-      </aside>
-
-      <section class="feed-column">
-        <section id="composerCard" class="composer card">
-          <div class="composer-row">
-            <div id="composerAvatar" class="avatar">KT</div>
-            <button id="openComposerButton" class="composer-prompt" type="button">
-              Share something with the Khmer community…
-            </button>
-          </div>
-        </section>
-
-        <div id="feedHeading" class="feed-heading">
-          <div>
-            <button id="sharedPostBackButton" class="shared-post-back hidden" type="button">← Back to community feed</button>
-            <h2 id="feedTitle">Community feed</h2>
-            <p id="feedSubtitle">Latest posts from Khmer Together members.</p>
-          </div>
-          <button id="refreshButton" class="icon-button" type="button" title="Refresh feed" aria-label="Refresh feed">↻</button>
-        </div>
-
-        <div id="loadingFeed" class="loading-card card">Loading community posts…</div>
-        <div id="emptyFeed" class="empty-card card hidden">
-          <div class="empty-icon">✦</div>
-          <h3>No posts yet</h3>
-          <p>Be the first person to share something with the community.</p>
-          <button id="emptyCreatePost" class="button primary" type="button">Create the first post</button>
-        </div>
-        <div id="feed" class="feed"></div>
-
-        <section id="accountSettingsView" class="account-settings-view hidden" aria-labelledby="accountSettingsTitle">
-          <div class="settings-page-header">
-            <div>
-              <span class="mini-badge">ACCOUNT &amp; SECURITY</span>
-              <h2 id="accountSettingsTitle">Account settings</h2>
-              <p>Manage your sign-in information, sessions, and account.</p>
-            </div>
-          </div>
-
-          <section class="card settings-card account-overview-card">
-            <div class="settings-card-heading">
-              <div>
-                <h3>Your account</h3>
-                <p>Your current Khmer Together sign-in information.</p>
-              </div>
-            </div>
-            <dl class="account-details-list">
-              <div><dt>Email</dt><dd id="settingsCurrentEmail">—</dd></div>
-              <div><dt>Sign-in method</dt><dd id="settingsProvider">—</dd></div>
-            </dl>
-          </section>
-
-          <section id="profileSettingsCard" class="card settings-card profile-settings-card">
-            <div class="settings-card-heading">
-              <div>
-                <h3>Edit profile</h3>
-                <p>Add your profile picture, display name, username, and bio.</p>
-              </div>
-            </div>
-
-            <form id="profileForm" class="settings-form profile-settings-form">
-              <section class="profile-photo-editor" aria-label="Profile picture">
-                <div id="profilePhotoPreview" class="avatar profile-photo-preview">KT</div>
-                <div class="profile-photo-actions">
-                  <label class="button ghost small photo-upload-button" for="profilePhotoInput">
-                    Choose profile picture
-                    <input id="profilePhotoInput" type="file" accept="image/jpeg,image/png,image/webp">
-                  </label>
-                  <button id="removeProfilePhotoButton" class="text-button danger-text" type="button">Remove picture</button>
-                  <small>JPG, PNG, or WebP — maximum 5 MB.</small>
-                </div>
-              </section>
-
-              <label>
-                Display name
-                <input id="profileName" maxlength="80" required placeholder="Your full name">
-              </label>
-
-              <label>
-                Username
-                <div class="username-field">
-                  <span>@</span>
-                  <input id="profileUsername" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}" required placeholder="david_yanna">
-                </div>
-                <small>3–30 letters, numbers, or underscores.</small>
-              </label>
-
-              <label>
-                Bio
-                <textarea id="profileBio" maxlength="240" placeholder="Tell the Khmer community a little about yourself."></textarea>
-              </label>
-
-              <p id="profileMessage" class="form-message" role="status"></p>
-              <button id="saveProfileButton" class="button primary full" type="submit">Save profile</button>
-            </form>
-          </section>
-
-          <section class="card settings-card">
-            <div class="settings-card-heading">
-              <div>
-                <h3>Change email</h3>
-                <p>Enter the new email address you want to use.</p>
-              </div>
-            </div>
-            <form id="changeEmailForm" class="settings-form">
-              <label>
-                New email address
-                <input id="newEmailInput" type="email" maxlength="254" autocomplete="email" required placeholder="new-email@example.com">
-              </label>
-              <p id="changeEmailMessage" class="form-message" role="status"></p>
-              <button id="changeEmailButton" class="button primary" type="submit">Update email</button>
-            </form>
-          </section>
-
-          <section class="card settings-card">
-            <div class="settings-card-heading">
-              <div>
-                <h3>Change password</h3>
-                <p>Use at least 12 characters. Google users can create a password here.</p>
-              </div>
-            </div>
-            <form id="changePasswordForm" class="settings-form">
-              <div class="settings-two-column">
-                <label>
-                  Current password (optional)
-                  <input id="currentPasswordInput" type="password" maxlength="200" autocomplete="current-password" placeholder="Only if your account uses one">
-                </label>
-                <label>
-                  Verification code (optional)
-                  <input id="passwordNonceInput" inputmode="numeric" maxlength="20" autocomplete="one-time-code" placeholder="Code sent by email">
-                </label>
-              </div>
-              <div class="settings-two-column">
-                <label>
-                  New password
-                  <input id="newPasswordInput" type="password" minlength="12" maxlength="200" autocomplete="new-password" required placeholder="At least 12 characters">
-                </label>
-                <label>
-                  Confirm new password
-                  <input id="confirmPasswordInput" type="password" minlength="12" maxlength="200" autocomplete="new-password" required placeholder="Type it again">
-                </label>
-              </div>
-              <div class="settings-inline-actions">
-                <button id="changePasswordButton" class="button primary" type="submit">Update password</button>
-                <button id="sendPasswordCodeButton" class="button ghost" type="button">Send verification code</button>
-              </div>
-              <p id="changePasswordMessage" class="form-message" role="status"></p>
-            </form>
-          </section>
-
-          <section class="card settings-card">
-            <div class="settings-card-heading">
-              <div>
-                <h3>Signed-in devices</h3>
-                <p>End Khmer Together sessions on this device and your other devices.</p>
-              </div>
-            </div>
-            <button id="signOutEverywhereButton" class="button ghost" type="button">Sign out on all devices</button>
-            <p id="signOutEverywhereMessage" class="form-message" role="status"></p>
-          </section>
-
-          <section class="card settings-card danger-zone-card">
-            <div class="settings-card-heading">
-              <div>
-                <span class="danger-kicker">DANGER ZONE</span>
-                <h3>Delete account permanently</h3>
-                <p>This removes your active profile, posts, comments, likes, follows, messages, notifications, reports, uploaded photos, and sent voice recordings. This cannot be undone.</p>
-              </div>
-            </div>
-            <button id="openDeleteAccountButton" class="button danger-button" type="button">Delete my account</button>
-          </section>
-        </section>
-
-        <section id="messagesView" class="messages-view hidden" aria-labelledby="messagesTitle">
-          <div class="messages-page-header">
-            <div>
-              <span class="mini-badge">PRIVATE CONVERSATIONS</span>
-              <h2 id="messagesTitle">Messages</h2>
-              <p id="messagesSummary">Your one-to-one conversations.</p>
-            </div>
-            <button id="messagesRefreshButton" class="icon-button" type="button" title="Refresh messages" aria-label="Refresh messages">↻</button>
-          </div>
-
-          <div id="messagesLoading" class="loading-card card hidden">Loading conversations…</div>
-          <div id="messagesEmpty" class="empty-card card hidden">
-            <div class="empty-icon">✉</div>
-            <h3>No conversations yet</h3>
-            <p>Open a member profile and tap Message to start a private conversation.</p>
-            <button id="findMembersForMessages" class="button primary" type="button">Find members</button>
-          </div>
-          <div id="conversationsList" class="conversations-list"></div>
-        </section>
-
-        <section id="chatView" class="chat-view hidden" aria-labelledby="chatMemberName">
-          <div class="chat-page-header card">
-            <button id="chatBackButton" class="chat-back-button" type="button" aria-label="Back to messages">←</button>
-            <button id="chatMemberButton" class="chat-member-button" type="button" aria-label="Open member profile">
-              <span id="chatMemberAvatar" class="avatar chat-member-avatar">KT</span>
-              <span>
-                <strong id="chatMemberName">Khmer Together Member</strong>
-                <small id="chatMemberUsername">@member</small>
-              </span>
-            </button>
-            <div class="chat-header-actions">
-              <button id="chatVoiceCallButton" class="chat-header-button chat-call-button" type="button" aria-label="Start voice call" title="Start voice call">
-                <span aria-hidden="true">📞</span><strong>Voice</strong>
-              </button>
-              <button id="chatVideoCallButton" class="chat-header-button chat-call-button" type="button" aria-label="Start video call" title="Start video call">
-                <span aria-hidden="true">🎥</span><strong>Video</strong>
-              </button>
-              <button id="chatReportButton" class="chat-header-button" type="button">Report</button>
-              <button id="chatBlockButton" class="chat-header-button danger" type="button">Block</button>
-            </div>
-          </div>
-
-          <div id="chatPrivacyNote" class="chat-privacy-note">
-            Only you and this member can read these messages. Call invitations use a private random meeting link.
-          </div>
-          <div id="chatBlockedNotice" class="chat-blocked-notice card hidden">
-            Messaging is unavailable because one of you has blocked the other. You can still read the conversation history.
-          </div>
-          <div id="chatLoading" class="loading-card card hidden">Loading messages…</div>
-          <div id="chatEmpty" class="chat-empty card hidden">
-            <span>👋</span>
-            <h3>Start the conversation</h3>
-            <p>Send a friendly private message.</p>
-          </div>
-          <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
-
-          <form id="chatComposer" class="chat-composer card">
-            <div id="chatAttachmentPreview" class="chat-attachment-preview hidden">
-              <div id="chatImageDraft" class="chat-image-draft multi-chat-image-draft hidden">
-                <div class="chat-image-draft-title">
-                  <div>
-                    <strong id="chatImageDraftInfo">Photos ready</strong>
-                    <span>Private to this conversation</span>
-                  </div>
-                </div>
-                <div id="chatImageDraftGrid" class="chat-image-draft-grid"></div>
-              </div>
-              <div id="chatAudioDraft" class="chat-audio-draft hidden">
-                <span class="voice-draft-icon" aria-hidden="true">🎙</span>
-                <div>
-                  <strong>Voice message ready</strong>
-                  <span id="chatAudioDraftInfo">0:00</span>
-                  <audio id="chatAudioDraftPlayer" controls preload="metadata"></audio>
-                </div>
-              </div>
-              <button id="removeChatAttachmentButton" class="remove-chat-attachment" type="button">Remove</button>
-            </div>
-
-            <div id="chatRecordingPanel" class="chat-recording-panel hidden" role="status">
-              <span class="recording-dot" aria-hidden="true"></span>
-              <strong>Recording</strong>
-              <time id="chatRecordingTime">0:00</time>
-              <button id="stopVoiceRecordingButton" type="button">Stop</button>
-              <button id="cancelVoiceRecordingButton" type="button">Cancel</button>
-            </div>
-
-            <div class="chat-composer-main">
-              <div class="chat-media-actions" aria-label="Message attachments">
-                <input id="chatPhotoInput" class="hidden" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp">
-                <button id="chatPhotoButton" class="chat-media-button" type="button" title="Add photo" aria-label="Add photo">
-                  <span aria-hidden="true">📷</span><small>Photo</small>
-                </button>
-                <button id="chatVoiceButton" class="chat-media-button" type="button" title="Record voice message" aria-label="Record voice message">
-                  <span aria-hidden="true">🎙</span><small>Voice</small>
-                </button>
-              </div>
-              <label class="sr-only" for="chatMessageInput">Message</label>
-              <textarea id="chatMessageInput" maxlength="2000" rows="1" placeholder="Write a private message…"></textarea>
-              <button id="sendMessageButton" class="button primary" type="submit">Send</button>
-            </div>
-            <small class="chat-media-note">Photos: up to 5, 10 MB each and 30 MB total. Voice: up to 5 minutes. Attachments stay private.</small>
-          </form>
-          <p id="chatMessageStatus" class="form-message" role="status"></p>
-        </section>
-
-        <section id="notificationsView" class="notifications-view hidden" aria-labelledby="notificationsTitle">
-          <div class="notifications-page-header">
-            <div>
-              <span class="mini-badge">YOUR ACTIVITY</span>
-              <h2 id="notificationsTitle">Notifications</h2>
-              <p id="notificationsSummary">See new followers, likes, and comments.</p>
-            </div>
-            <div class="notifications-header-actions">
-              <button id="markAllNotificationsRead" class="button small ghost" type="button">Mark all read</button>
-              <button id="notificationsRefreshButton" class="icon-button" type="button" title="Refresh notifications" aria-label="Refresh notifications">↻</button>
-            </div>
-          </div>
-
-          <div class="notification-filters" role="group" aria-label="Notification filter">
-            <button class="notification-filter active" data-notification-filter="all" type="button">All</button>
-            <button class="notification-filter" data-notification-filter="unread" type="button">Unread</button>
-          </div>
-
-          <div id="notificationsLoading" class="loading-card card hidden">Loading notifications…</div>
-          <div id="notificationsEmpty" class="empty-card card hidden">
-            <div class="empty-icon">✓</div>
-            <h3 id="notificationsEmptyTitle">No notifications yet</h3>
-            <p id="notificationsEmptyText">New followers, likes, and comments will appear here.</p>
-          </div>
-          <div id="notificationsList" class="notifications-list"></div>
-        </section>
-
-        <section id="membersView" class="members-view hidden" aria-labelledby="membersTitle">
-          <div class="members-page-header">
-            <div>
-              <span class="mini-badge">DISCOVER COMMUNITY</span>
-              <h2 id="membersTitle">Find members</h2>
-              <p>Search Khmer Together by display name or username.</p>
-            </div>
-            <button id="membersRefreshButton" class="icon-button" type="button" title="Refresh members" aria-label="Refresh members">↻</button>
-          </div>
-
-          <label class="member-search-box" for="memberSearchInput">
-            <span aria-hidden="true">⌕</span>
-            <input id="memberSearchInput" type="search" maxlength="80" autocomplete="off" placeholder="Search name or @username">
-            <button id="memberSearchClearButton" class="member-search-clear hidden" type="button" aria-label="Clear member search">×</button>
-          </label>
-
-          <p id="memberSearchSummary" class="member-search-summary">Loading members…</p>
-          <div id="membersLoading" class="loading-card card hidden">Loading members…</div>
-          <div id="membersEmpty" class="empty-card card hidden">
-            <div class="empty-icon">⌕</div>
-            <h3>No members found</h3>
-            <p>Try a different name or username.</p>
-          </div>
-          <div id="membersList" class="members-list"></div>
-        </section>
-
-        <section id="memberProfileView" class="member-profile-view hidden" aria-labelledby="memberProfileName">
-          <button id="memberProfileBackButton" class="profile-back-button" type="button">← Back</button>
-
-          <div id="memberProfileLoading" class="loading-card card hidden">Loading member profile…</div>
-          <div id="memberProfileError" class="empty-card card hidden">
-            <div class="empty-icon">!</div>
-            <h3>Profile unavailable</h3>
-            <p id="memberProfileErrorText">This member may no longer be available.</p>
-          </div>
-
-          <article id="memberProfileCard" class="card member-profile-card hidden">
-            <div id="memberProfileAvatar" class="avatar member-profile-avatar">KT</div>
-            <div class="member-profile-identity">
-              <span id="memberProfileYouBadge" class="mini-badge hidden">YOUR PROFILE</span>
-              <h2 id="memberProfileName">Khmer Together Member</h2>
-              <p id="memberProfileUsername">@member</p>
-              <p id="memberProfileBio" class="member-profile-bio">No bio yet.</p>
-            </div>
-
-            <div id="memberProfileActions" class="member-profile-actions"></div>
-
-            <div class="member-profile-stats" aria-label="Profile statistics">
-              <div><strong id="memberProfilePostCount">0</strong><span>Posts</span></div>
-              <div><strong id="memberProfileFollowerCount">0</strong><span>Followers</span></div>
-              <div><strong id="memberProfileFollowingCount">0</strong><span>Following</span></div>
-            </div>
-          </article>
-
-          <div id="memberPostsHeading" class="member-posts-heading hidden">
-            <div>
-              <h3>Posts</h3>
-              <p id="memberPostsSummary">Recent posts from this member.</p>
-            </div>
-          </div>
-
-          <div id="memberPostsEmpty" class="empty-card card hidden">
-            <div class="empty-icon">✦</div>
-            <h3>No posts yet</h3>
-            <p>This member has not shared anything yet.</p>
-          </div>
-          <div id="memberPostsList" class="feed member-posts-list"></div>
-        </section>
-
-        <section id="adminReportsView" class="admin-reports-view hidden" aria-labelledby="adminReportsTitle">
-          <div class="admin-page-header">
-            <div>
-              <span class="mini-badge">PRIVATE ADMIN</span>
-              <h2 id="adminReportsTitle">Community reports</h2>
-              <p id="adminSummary">Loading reports…</p>
-            </div>
-            <button id="adminRefreshButton" class="icon-button" type="button" title="Refresh reports" aria-label="Refresh reports">↻</button>
-          </div>
-
-          <label class="admin-filter">
-            Show reports
-            <select id="adminStatusFilter">
-              <option value="open">Open</option>
-              <option value="reviewing">Reviewing</option>
-              <option value="resolved">Resolved</option>
-              <option value="dismissed">Dismissed</option>
-              <option value="all">All reports</option>
-            </select>
-          </label>
-
-          <div id="adminReportsLoading" class="loading-card card hidden">Loading private reports…</div>
-          <div id="adminReportsEmpty" class="empty-card card hidden">
-            <div class="empty-icon">✓</div>
-            <h3>No reports in this section</h3>
-            <p>There is nothing that needs review here.</p>
-          </div>
-          <div id="adminReportsList" class="admin-reports-list"></div>
-        </section>
-
-        <section id="blockedUsersView" class="blocked-users-view hidden" aria-labelledby="blockedUsersTitle">
-          <div class="blocked-page-header">
-            <div>
-              <span class="mini-badge">PRIVACY &amp; SAFETY</span>
-              <h2 id="blockedUsersTitle">Blocked users</h2>
-              <p id="blockedUsersSummary">People you block cannot follow, like, or comment on your posts.</p>
-            </div>
-            <button id="blockedUsersRefreshButton" class="icon-button" type="button" title="Refresh blocked users" aria-label="Refresh blocked users">↻</button>
-          </div>
-
-          <div id="blockedUsersLoading" class="loading-card card hidden">Loading blocked users…</div>
-          <div id="blockedUsersEmpty" class="empty-card card hidden">
-            <div class="empty-icon">✓</div>
-            <h3>You have not blocked anyone</h3>
-            <p>Blocked members will appear here so you can unblock them later.</p>
-          </div>
-          <div id="blockedUsersList" class="blocked-users-list"></div>
-        </section>
-      </section>
-
-      <aside class="rightbar">
-        <section class="card welcome-card">
-          <span class="mini-badge">WELCOME</span>
-          <h3>Stronger together</h3>
-          <p>Celebrate Khmer culture, support Khmer businesses, and help community members succeed.</p>
-        </section>
-
-        <section class="card guidelines">
-          <h3>Community guidelines</h3>
-          <ul>
-            <li>Use your real identity.</li>
-            <li>Be respectful and helpful.</li>
-            <li>No scams, hate, or harassment.</li>
-            <li>Report unsafe content.</li>
-          </ul>
-        </section>
-      </aside>
-    </section>
-  </main>
-
-
-  <nav id="mobileBottomNav" class="mobile-bottom-nav hidden" aria-label="Mobile navigation">
-    <button id="mobileFeedNav" class="mobile-nav-item active" data-feed="all" type="button">
-      <span class="mobile-nav-icon" aria-hidden="true">⌂</span>
-      <small>Feed</small>
-    </button>
-
-    <button id="mobileMessagesNav" class="mobile-nav-item" data-feed="messages" type="button">
-      <span class="mobile-nav-icon" aria-hidden="true">✉</span>
-      <small>Messages</small>
-      <strong id="mobileMessageBadge" class="mobile-nav-badge hidden">0</strong>
-    </button>
-
-    <button id="mobileCreatePostButton" class="mobile-nav-item mobile-create-item" type="button" aria-label="Create post">
-      <span class="mobile-create-icon" aria-hidden="true">＋</span>
-      <small>Create</small>
-    </button>
-
-    <button id="mobileNotificationsNav" class="mobile-nav-item" data-feed="notifications" type="button">
-      <span class="mobile-nav-icon" aria-hidden="true">♢</span>
-      <small>Alerts</small>
-      <strong id="mobileNotificationBadge" class="mobile-nav-badge hidden">0</strong>
-    </button>
-
-    <button id="mobileMoreButton" class="mobile-nav-item" type="button" aria-haspopup="dialog" aria-controls="mobileMoreDialog">
-      <span class="mobile-nav-icon" aria-hidden="true">☰</span>
-      <small>More</small>
-    </button>
-  </nav>
-
-  <footer class="site-footer">
-    <div class="site-footer-inner">
-      <div>
-        <strong>Khmer Together</strong>
-        <span>Connecting Khmer everywhere</span>
-      </div>
-      <nav aria-label="Legal and safety">
-        <a href="/terms.html">Terms</a>
-        <a href="/privacy.html">Privacy</a>
-        <a href="/guidelines.html">Community Guidelines</a>
-        <a href="/copyright.html">Copyright &amp; Reports</a>
-      </nav>
-      <small>© 2026 Khmer Together. Independent community platform.</small>
+  <dialog id="memberDialog" class="member-dialog">
+    <button id="closeMemberDialog" class="dialog-close" type="button" aria-label="Close">×</button>
+    <div class="member-profile-content">
+      <span id="memberAvatar" class="avatar profile-avatar">CU</span>
+      <h2 id="memberName">Member</h2>
+      <p id="memberUsername">@member</p>
+      <p id="memberLocation" class="location-text hidden"></p>
+      <p id="memberBio" class="profile-bio"></p>
+      <div class="stats centered"><div><strong id="memberPostCount">0</strong><span>Posts</span></div><div><strong id="memberFollowerCount">0</strong><span>Followers</span></div><div><strong id="memberFollowingCount">0</strong><span>Following</span></div></div>
+      <button id="memberFollowButton" class="button primary full" type="button">Follow</button>
     </div>
-  </footer>
-
-  <dialog id="mobileMoreDialog" class="mobile-more-dialog">
-    <section class="mobile-more-sheet">
-      <div class="mobile-more-handle" aria-hidden="true"></div>
-
-      <div class="mobile-more-header">
-        <button id="mobileMoreProfileButton" class="mobile-more-profile" type="button">
-          <span id="mobileMoreAvatar" class="avatar">KT</span>
-          <span>
-            <strong id="mobileMoreName">Khmer Together Member</strong>
-            <small id="mobileMoreUsername">@member</small>
-          </span>
-        </button>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <nav class="mobile-more-menu" aria-label="More navigation">
-        <button class="mobile-more-item" data-feed="following" type="button">
-          <span aria-hidden="true">♡</span>
-          <strong>Following</strong>
-        </button>
-        <button class="mobile-more-item" data-feed="members" type="button">
-          <span aria-hidden="true">⌕</span>
-          <strong>Find members</strong>
-        </button>
-        <button class="mobile-more-item" data-feed="blocked" type="button">
-          <span aria-hidden="true">⊘</span>
-          <strong>Blocked users</strong>
-        </button>
-        <button class="mobile-more-item" data-feed="settings" type="button">
-          <span aria-hidden="true">⚙</span>
-          <strong>Account settings</strong>
-        </button>
-        <button id="mobileMoreAdminButton" class="mobile-more-item hidden" data-feed="admin" type="button">
-          <span aria-hidden="true">⚑</span>
-          <strong>Admin reports</strong>
-        </button>
-        <button id="mobileMoreSignOutButton" class="mobile-more-item danger" type="button">
-          <span aria-hidden="true">↪</span>
-          <strong>Sign out</strong>
-        </button>
-      </nav>
-
-      <div class="mobile-more-legal">
-        <a href="/terms.html">Terms</a>
-        <a href="/privacy.html">Privacy</a>
-        <a href="/guidelines.html">Guidelines</a>
-      </div>
-    </section>
   </dialog>
 
-  <dialog id="deleteAccountDialog" class="modal danger-modal">
-    <form id="deleteAccountForm" method="dialog">
-      <div class="modal-header">
-        <div>
-          <span class="danger-kicker">PERMANENT ACTION</span>
-          <h2>Delete your account?</h2>
-          <p>Your account and active Khmer Together data cannot be restored.</p>
-        </div>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <div class="delete-warning-box">
-        <strong>Before continuing</strong>
-        <ul>
-          <li>Your profile and community activity will be removed.</li>
-          <li>Your private conversations, sent message photos, and sent voice recordings will be removed.</li>
-          <li>You will immediately lose access to this account.</li>
-        </ul>
-      </div>
-
-      <label>
-        Type your username: <strong id="deleteExpectedUsername">member</strong>
-        <input id="deleteUsernameInput" maxlength="30" autocomplete="off" required placeholder="Your username without @">
-      </label>
-
-      <label>
-        Type <strong>DELETE</strong>
-        <input id="deleteWordInput" maxlength="6" autocomplete="off" required placeholder="DELETE">
-      </label>
-
-      <label class="delete-understanding-row">
-        <input id="deleteUnderstandingCheckbox" type="checkbox" required>
-        <span>I understand that this action cannot be undone.</span>
-      </label>
-
-      <p id="deleteAccountMessage" class="form-message" role="status"></p>
-      <button id="confirmDeleteAccountButton" class="button danger-button full" type="submit">Permanently delete account</button>
-    </form>
-  </dialog>
-
-  <dialog id="postDialog" class="modal">
-    <form id="postForm" method="dialog">
-      <div class="modal-header">
-        <div>
-          <h2>Create post</h2>
-          <p>Share with the Khmer Together community.</p>
-        </div>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <label>
-        Your message
-        <textarea id="postBody" maxlength="2000" placeholder="What would you like to share?"></textarea>
-      </label>
-
-      <label class="upload-box" for="postImage">
-        <span class="upload-icon">＋</span>
-        <strong>Add up to five photos</strong>
-        <small>JPG, PNG, GIF, or WebP — 10 MB each, 30 MB total</small>
-        <input id="postImage" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp">
-      </label>
-
-      <div id="imagePreviewWrap" class="multi-image-preview-wrap hidden">
-        <div class="multi-image-preview-heading">
-          <strong id="postPhotoCount">0 of 5 photos selected</strong>
-          <button id="removeImageButton" class="text-button danger-text" type="button">Remove all</button>
-        </div>
-        <div id="imagePreviewGrid" class="multi-image-preview-grid"></div>
-      </div>
-
-      <p id="postMessage" class="form-message" role="status"></p>
-      <button id="publishButton" class="button primary full" type="submit">Publish post</button>
-    </form>
-  </dialog>
-
-  <dialog id="reportDialog" class="modal">
-    <form id="reportForm" method="dialog">
-      <div class="modal-header">
-        <div>
-          <h2>Report post</h2>
-          <p>Your report is private and will be saved for review.</p>
-        </div>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <label>
-        Reason
-        <select id="reportReason" required>
-          <option value="">Select a reason</option>
-          <option value="spam_scam">Spam or scam</option>
-          <option value="harassment">Harassment or bullying</option>
-          <option value="hate">Hate or dangerous content</option>
-          <option value="inappropriate">Inappropriate content</option>
-          <option value="other">Other</option>
-        </select>
-      </label>
-
-      <label>
-        Details (optional)
-        <textarea id="reportDetails" maxlength="500" placeholder="Tell us what is wrong with this post."></textarea>
-      </label>
-
-      <p id="reportMessage" class="form-message" role="status"></p>
-      <button id="submitReportButton" class="button primary full" type="submit">Submit report</button>
-    </form>
-  </dialog>
-
-  <dialog id="conversationReportDialog" class="modal">
-    <form id="conversationReportForm" method="dialog">
-      <div class="modal-header">
-        <div>
-          <h2>Report conversation</h2>
-          <p>Your reason and details will be reviewed. Private message contents are not automatically shared.</p>
-        </div>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <div id="reportedConversationMember" class="reported-member-preview"></div>
-
-      <label>
-        Reason
-        <select id="conversationReportReason" required>
-          <option value="">Select a reason</option>
-          <option value="spam_scam">Spam or scam messages</option>
-          <option value="harassment">Harassment or bullying</option>
-          <option value="unsafe_message">Threatening or unsafe messages</option>
-          <option value="other">Other</option>
-        </select>
-      </label>
-
-      <label>
-        Details
-        <textarea id="conversationReportDetails" maxlength="500" required placeholder="Explain what happened. Do not include private information you do not want reviewed."></textarea>
-      </label>
-
-      <p id="conversationReportMessage" class="form-message" role="status"></p>
-      <button id="submitConversationReportButton" class="button primary full" type="submit">Submit conversation report</button>
-    </form>
-  </dialog>
-
-  <dialog id="memberReportDialog" class="modal">
-    <form id="memberReportForm" method="dialog">
-      <div class="modal-header">
-        <div>
-          <h2>Report member</h2>
-          <p>Your report is private and will be reviewed by the administrator.</p>
-        </div>
-        <button type="button" class="close-button" aria-label="Close">×</button>
-      </div>
-
-      <div id="reportedMemberPreview" class="reported-member-preview"></div>
-
-      <label>
-        Reason
-        <select id="memberReportReason" required>
-          <option value="">Select a reason</option>
-          <option value="impersonation">Fake account or impersonation</option>
-          <option value="spam_scam">Spam or scam</option>
-          <option value="harassment">Harassment or bullying</option>
-          <option value="unsafe_account">Unsafe or suspicious account</option>
-          <option value="other">Other</option>
-        </select>
-      </label>
-
-      <label>
-        Details (optional)
-        <textarea id="memberReportDetails" maxlength="500" placeholder="Explain why this member should be reviewed."></textarea>
-      </label>
-
-      <p id="memberReportMessage" class="form-message" role="status"></p>
-      <button id="submitMemberReportButton" class="button primary full" type="submit">Submit member report</button>
-    </form>
-  </dialog>
-
-  <dialog id="photoViewerDialog" class="photo-viewer-dialog">
-    <button id="closePhotoViewerButton" class="photo-viewer-close" type="button" aria-label="Close photo viewer">×</button>
-    <button id="previousPhotoButton" class="photo-viewer-nav previous" type="button" aria-label="Previous photo">‹</button>
-    <figure>
-      <img id="photoViewerImage" alt="Large photo">
-      <figcaption id="photoViewerCaption">Photo 1 of 1</figcaption>
-    </figure>
-    <button id="nextPhotoButton" class="photo-viewer-nav next" type="button" aria-label="Next photo">›</button>
-  </dialog>
-
-  <template id="postTemplate">
-    <article class="post-card card">
-      <header class="post-header">
-        <div class="post-author">
-          <div class="avatar post-avatar"></div>
-          <div>
-            <strong class="post-name"></strong>
-            <span><span class="post-username"></span> · <time class="post-time"></time></span>
-          </div>
-        </div>
-        <div class="post-actions-top">
-          <button class="follow-button button small ghost" type="button"></button>
-          <button class="report-post post-control hidden" type="button">Report</button>
-          <button class="delete-post post-control danger hidden" type="button">Delete</button>
-        </div>
-      </header>
-
-      <p class="post-body"></p>
-      <div class="post-gallery hidden" aria-label="Post photos"></div>
-
-      <div class="post-stats">
-        <span class="like-count">0 likes</span>
-        <span class="comment-count">0 comments</span>
-      </div>
-
-      <div class="post-actions">
-        <button class="like-button" type="button"><span>♡</span> Like</button>
-        <button class="comment-focus" type="button"><span>◯</span> Comment</button>
-        <button class="share-button" type="button" aria-haspopup="menu" aria-expanded="false"><span>↗</span> Share</button>
-      </div>
-
-      <div class="comments"></div>
-
-      <form class="comment-form">
-        <div class="avatar comment-avatar"></div>
-        <input class="comment-input" maxlength="500" required placeholder="Write a comment…">
-        <button class="comment-submit" type="submit" aria-label="Post comment">➤</button>
-      </form>
-    </article>
-  </template>
-
-  <script src="/short-links.js" defer></script><script type="module" src="/app.js"></script>
-<script type="module" src="/native-calls.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
